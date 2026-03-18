@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "Build OpenGL DLL",
+			"command": "D:/progamFiles/mingw64_8/bin/gcc.exe",
+			"args": [
+				"${workspaceFolder}\\opengl_source\\opengl_drawer.c",
+				"-shared",
+				"-Icglm",
+				"-o",
+				"${workspaceFolder}\\opengl_exe\\opengl_drawer.dll",
+				"-lopengl32",
+				"-lgdi32",
+				"-fdiagnostics-color=always",
+				"-g"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+			"detail": "compiler: D:/progamFiles/mingw64_8/bin/gcc.exe"
+		}
+	]
+}
