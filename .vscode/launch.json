@@ -2,6 +2,50 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Launch python app",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}\\simulator\\example_app.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug DLL through Python (gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "C:/Users/kobie/AppData/Local/Programs/Python/Python312/python.exe",
+      "args": [
+        "${workspaceFolder}\\simulator\\example_app.py"
+      ],
+      "environment": [
+        {
+          "name": "PYTHONHOME",
+          "value": "C:/Users/kobie/AppData/Local/Programs/Python/Python312"
+        },
+        {
+          "name": "PYTHONPATH",
+          "value": ""
+        }
+      ],
+      "preLaunchTask": "Build OpenGL DLL",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "D:/progamFiles/mingw64_8/bin/gdb.exe",
+      "externalConsole": false,
+      "stopAtEntry": false,
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Allow breakpoints before DLL symbols are loaded",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
       "name": "Build DLL only",
       "type": "cppdbg",
       "request": "launch",
