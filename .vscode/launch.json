@@ -5,7 +5,7 @@
       "name": "Launch python app",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}\\scripts\\main.py",
+      "program": "${workspaceFolder}\\simulator\\main.py",
       "console": "integratedTerminal"
     },
     {
@@ -21,7 +21,7 @@
       "request": "launch",
       "program": "C:/Users/kobie/AppData/Local/Programs/Python/Python312/python.exe",
       "args": [
-        "${workspaceFolder}\\scripts\\main.py"
+        "${workspaceFolder}\\simulator\\main.py"
       ],
       "environment": [
         {
