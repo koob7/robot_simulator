@@ -26,7 +26,7 @@ class App:
 			label = ttk.Label(sliders_frame, text=f"Pozycja {axis}")
 			label.pack()
 
-			slider = tk.Scale(sliders_frame, from_=-30.0, to=30.0, resolution=0.01, orient="horizontal", length=300)
+			slider = tk.Scale(sliders_frame, from_=-300.0, to=300.0, resolution=0.01, orient="horizontal", length=300)
 			slider.pack()
 			self.sliders.append(slider)
 		label = ttk.Label(sliders_frame, text=f"camAngleX")

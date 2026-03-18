@@ -5,7 +5,14 @@
       "name": "Launch python app",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}\\simulator\\example_app.py",
+      "program": "${workspaceFolder}\\scripts\\main.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Launch python example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}\\example\\example_app.py",
       "console": "integratedTerminal"
     },
     {
@@ -14,7 +21,7 @@
       "request": "launch",
       "program": "C:/Users/kobie/AppData/Local/Programs/Python/Python312/python.exe",
       "args": [
-        "${workspaceFolder}\\simulator\\example_app.py"
+        "${workspaceFolder}\\scripts\\main.py"
       ],
       "environment": [
         {
