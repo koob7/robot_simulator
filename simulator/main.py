@@ -45,6 +45,9 @@ if __name__ == "__main__":
 
     kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab)
     window.ik_tab.link_ik_changed_callback(kinematic_manager.ik_changed_callback)
+    window.ik_tab.link_ik_released_callback(kinematic_manager.ik_released_callback)
+
     window.fk_tab.link_fk_changed_callback(kinematic_manager.fk_changed_callback)
+    window.fk_tab.link_fk_released_callback(kinematic_manager.fk_released_callback)
 
     sys.exit(app.exec())
