@@ -24,7 +24,7 @@ class kinematicManager:
 
         self.wrapper.moveRobot(self.ROBOT_FK, 300, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_IK, 0, 0, 0)
-        self.wrapper.moveRobot(self.ROBOT_EDGES, -300, 0, 0)#TODO temporary
+        self.wrapper.moveRobot(self.ROBOT_EDGES, 0, 0, 0)
 
         self._edges_path = []
         self._edges_path_idx = 0
@@ -37,7 +37,7 @@ class kinematicManager:
         logger.debug(f"User input IK: {user_position}")
 
         ik_result = calculate_ik(user_position[0], user_position[1], user_position[2], user_position[3], user_position[4], user_position[5])
-        self.wrapper.rotateRobot(self.ROBOT_IK, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
 
         #check calculated ik result with fk
         fk_result = calculate_fk(ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
@@ -56,7 +56,7 @@ class kinematicManager:
         fk_result = calculate_fk(user_angles[0], user_angles[1], user_angles[2], user_angles[3], user_angles[4], user_angles[5])
         ik_result =  calculate_ik(fk_result[0], fk_result[1], fk_result[2], fk_result[3], fk_result[4], fk_result[5])
 
-        self.wrapper.rotateRobot(self.ROBOT_IK, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
         self.ik_tab.set_values(int(fk_result[0]), int(fk_result[1]), int(fk_result[2]), int(fk_result[3]), int(fk_result[4]), int(fk_result[5]))
 
     def ik_released_callback(self, _value=None):
@@ -64,12 +64,12 @@ class kinematicManager:
         logger.debug(f"IK released target pose: {target_pose}")
 
         current_angles = (
-            self.wrapper.actual_angle_0[self.ROBOT_EDGES],
-            self.wrapper.actual_angle_1[self.ROBOT_EDGES],
-            self.wrapper.actual_angle_2[self.ROBOT_EDGES],
-            self.wrapper.actual_angle_3[self.ROBOT_EDGES],
-            self.wrapper.actual_angle_4[self.ROBOT_EDGES],
-            self.wrapper.actual_angle_5[self.ROBOT_EDGES],
+            self.wrapper.actual_angle_0[self.ROBOT_IK],
+            self.wrapper.actual_angle_1[self.ROBOT_IK],
+            self.wrapper.actual_angle_2[self.ROBOT_IK],
+            self.wrapper.actual_angle_3[self.ROBOT_IK],
+            self.wrapper.actual_angle_4[self.ROBOT_IK],
+            self.wrapper.actual_angle_5[self.ROBOT_IK],
         )
         current_pose = calculate_fk(*current_angles)
 
@@ -132,7 +132,7 @@ class kinematicManager:
             return
 
         ik_step = self._edges_path[self._edges_path_idx]
-        self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_step)
+        self.wrapper.rotateRobot(self.ROBOT_IK, *ik_step)
         self._edges_path_idx += 1
 
     def fk_released_callback(self, _value=None):
