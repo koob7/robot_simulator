@@ -27,7 +27,6 @@ class FK_TAB(QtWidgets.QWidget):
             self.sliders[i].setSingleStep(1)
             self.sliders[i].setPageStep(10)
             self.sliders[i].setValue(0)
-            self.sliders[i].valueChanged.connect(self.on_value_changed)
 
             label = QtWidgets.QLabel(f"Joint {i + 1}:")
             label.setStyleSheet("font-weight: bold;")
@@ -50,13 +49,13 @@ class FK_TAB(QtWidgets.QWidget):
 
         main_layout.addStretch()
 
-    def on_value_changed(self, value: int):
-        slider = self.sender()
-        index = self.sliders.index(slider)
-
-        self.value_labels[index].setText(f"{value}°")
-        print(f"FK Joint {index + 1}: {value}")
-
     def reset_value(self):
         for slider in self.sliders:
             slider.setValue(0)
+
+    def link_fk_changed_callback(self, callback):
+        for slider in self.sliders:
+            slider.valueChanged.connect(callback)
+
+    def get_values(self):
+        return [slider.value() for slider in self.sliders]

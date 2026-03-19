@@ -4,7 +4,7 @@ import os
 
 class Wrapper:
 	def __init__(self):
-		self.dll = CDLL('opengl_exe/opengl_drawer.dll')
+		self.dll = CDLL('example/opengl_drawer.dll')
 		self.dll.Initialize.argtypes = [c_uint64]
 		self.dll.CalcProjectionMatrix.argtypes = [c_int32, c_int32]
 		self.dll.SetCamera.argtypes = [c_float, c_float, c_float, c_float, c_float]

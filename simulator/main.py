@@ -5,6 +5,7 @@ from Wrapper import Wrapper
 from RobotViewport import RobotViewport
 from IK_TAB import IK_TAB
 from FK_TAB import FK_TAB
+from kinematicManager import kinematicManager
 
 class MainWindow(QtWidgets.QSplitter):
     def __init__(self):
@@ -34,5 +35,9 @@ if __name__ == "__main__":
 
     window = MainWindow()
     window.show()
+
+    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab)
+    window.ik_tab.link_ik_changed_callback(kinematic_manager.ik_changed_callback)
+    window.fk_tab.link_fk_changed_callback(kinematic_manager.fk_changed_callback)
 
     sys.exit(app.exec())

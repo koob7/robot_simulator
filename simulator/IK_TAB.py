@@ -28,7 +28,6 @@ class IK_TAB(QtWidgets.QWidget):
             self.sliders[i].setSingleStep(1)
             self.sliders[i].setPageStep(10)
             self.sliders[i].setValue(0)
-            self.sliders[i].valueChanged.connect(self.on_value_changed)
 
             label = QtWidgets.QLabel(f"{labels_pos[i]} Position:")
             label.setStyleSheet("font-weight: bold;")
@@ -58,7 +57,6 @@ class IK_TAB(QtWidgets.QWidget):
             self.sliders[idx].setSingleStep(1)
             self.sliders[idx].setPageStep(10)
             self.sliders[idx].setValue(0)
-            self.sliders[idx].valueChanged.connect(self.on_value_changed)
 
             label = QtWidgets.QLabel(f"{labels_angle[i]}:")
             label.setStyleSheet("font-weight: bold;")
@@ -81,17 +79,13 @@ class IK_TAB(QtWidgets.QWidget):
 
         main_layout.addStretch()
 
-    def on_value_changed(self, value: int):
-        slider = self.sender()
-        index = self.sliders.index(slider)
-
-        if index < self.N_POSITION_SLIDERS:
-            self.value_labels[index].setText(f"{value} mm")
-        else:
-            self.value_labels[index].setText(f"{value}°")
-        
-        print(f"IK Slider {index}: {value}")
-
     def reset_value(self):
         for slider in self.sliders:
             slider.setValue(0)
+
+    def link_ik_changed_callback(self, callback):
+        for slider in self.sliders:
+            slider.valueChanged.connect(callback)
+
+    def get_values(self):
+        return [slider.value() for slider in self.sliders]
