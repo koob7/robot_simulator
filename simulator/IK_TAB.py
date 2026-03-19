@@ -21,25 +21,28 @@ class IK_TAB(QtWidgets.QWidget):
         pos_layout.setSpacing(6)
 
         labels_pos = ["X", "Y", "Z"]
-        for i in range(self.N_POSITION_SLIDERS):
-            self.sliders[i] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-            self.sliders[i].setMinimum(-300)
-            self.sliders[i].setMaximum(300)
-            self.sliders[i].setSingleStep(1)
-            self.sliders[i].setPageStep(10)
-            self.sliders[i].setValue(0)
+        for idx in range(self.N_POSITION_SLIDERS):
+            self.sliders[idx] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+            self.sliders[idx].setMinimum(-400)
+            self.sliders[idx].setMaximum(400)
+            self.sliders[idx].setSingleStep(1)
+            self.sliders[idx].setPageStep(10)
+            self.sliders[idx].setValue(0)
 
-            label = QtWidgets.QLabel(f"{labels_pos[i]} Position:")
+            label = QtWidgets.QLabel(f"{labels_pos[idx]} Position:")
             label.setStyleSheet("font-weight: bold;")
-            self.value_labels[i] = QtWidgets.QLabel("0 mm")
-            font = self.value_labels[i].font()
+            self.value_labels[idx] = QtWidgets.QLabel("0 mm")
+            font = self.value_labels[idx].font()
             font.setBold(True)
-            self.value_labels[i].setFont(font)
-            self.value_labels[i].setMinimumWidth(60)
+            self.value_labels[idx].setFont(font)
+            self.value_labels[idx].setMinimumWidth(60)
+            self.sliders[idx].valueChanged.connect(
+                lambda value, idx=idx: self.update_label(idx, value)
+            )
 
-            pos_layout.addWidget(label, i, 0)
-            pos_layout.addWidget(self.sliders[i], i, 1)
-            pos_layout.addWidget(self.value_labels[i], i, 2)
+            pos_layout.addWidget(label, idx, 0)
+            pos_layout.addWidget(self.sliders[idx], idx, 1)
+            pos_layout.addWidget(self.value_labels[idx], idx, 2)
 
         main_layout.addWidget(pos_group)
 
@@ -49,8 +52,8 @@ class IK_TAB(QtWidgets.QWidget):
         angle_layout.setSpacing(6)
 
         labels_angle = ["Roll", "Pitch", "Yaw"]
-        for i in range(self.N_ANGLE_SLIDERS):
-            idx = self.N_POSITION_SLIDERS + i
+        for idx in range(self.N_ANGLE_SLIDERS):
+            idx = self.N_POSITION_SLIDERS + idx
             self.sliders[idx] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
             self.sliders[idx].setMinimum(-180)
             self.sliders[idx].setMaximum(180)
@@ -58,17 +61,20 @@ class IK_TAB(QtWidgets.QWidget):
             self.sliders[idx].setPageStep(10)
             self.sliders[idx].setValue(0)
 
-            label = QtWidgets.QLabel(f"{labels_angle[i]}:")
+            label = QtWidgets.QLabel(f"{labels_angle[idx - self.N_POSITION_SLIDERS]}:")
             label.setStyleSheet("font-weight: bold;")
             self.value_labels[idx] = QtWidgets.QLabel("0°")
             font = self.value_labels[idx].font()
             font.setBold(True)
             self.value_labels[idx].setFont(font)
             self.value_labels[idx].setMinimumWidth(60)
+            self.sliders[idx].valueChanged.connect(
+                lambda value, idx=idx: self.update_label(idx, value)
+            )
 
-            angle_layout.addWidget(label, i, 0)
-            angle_layout.addWidget(self.sliders[idx], i, 1)
-            angle_layout.addWidget(self.value_labels[idx], i, 2)
+            angle_layout.addWidget(label, idx, 0)
+            angle_layout.addWidget(self.sliders[idx], idx, 1)
+            angle_layout.addWidget(self.value_labels[idx], idx, 2)
 
         main_layout.addWidget(angle_group)
 
@@ -87,5 +93,19 @@ class IK_TAB(QtWidgets.QWidget):
         for slider in self.sliders:
             slider.valueChanged.connect(callback)
 
+    def update_label(self, idx, value):
+        if idx < self.N_POSITION_SLIDERS:
+            self.value_labels[idx].setText(f"{value} mm")
+        else:
+            self.value_labels[idx].setText(f"{value}°")
+
     def get_values(self):
         return [slider.value() for slider in self.sliders]
+    
+    def set_values(self, x: int, y: int, z: int, roll: int, pitch: int, yaw: int):
+        values = [x, y, z, roll, pitch, yaw]
+        for idx in range(self.N_ANGLE_SLIDERS + self.N_POSITION_SLIDERS):
+            self.update_label(idx, values[idx])
+            self.sliders[idx].blockSignals(True)
+            self.sliders[idx].setValue(values[idx])
+            self.sliders[idx].blockSignals(False)

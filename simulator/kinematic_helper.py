@@ -2,7 +2,9 @@ import numpy as np
 from typing import Tuple
 import math
 
+import logging
 
+logger = logging.getLogger(__name__)
 
 D1 = 104.0   # mm (d1)
 A2 = 270.0   # mm (a2)
@@ -64,7 +66,7 @@ def pose_from_transform(T: np.ndarray, degrees: bool = True) -> tuple[float, flo
 
     return float(x), float(y), float(z), float(a_out), float(b_out), float(c_out) # obrót wokół ZYX
 
-def calculate_ik(x: float, y: float, z: float, phi_in: float, beta_in: float, psi_in: float, verbose = False) -> tuple[float, float, float, float, float, float]:
+def calculate_ik(x: float, y: float, z: float, phi_in: float, beta_in: float, psi_in: float) -> tuple[float, float, float, float, float, float]:
     
 
     epsilon = 0.001
@@ -148,12 +150,11 @@ def calculate_ik(x: float, y: float, z: float, phi_in: float, beta_in: float, ps
     
     for i in range(6):
         theta[i] = theta[i]*180/np.pi
-        if verbose: 
-            print(f"theta[{i+1}] = {theta[i]:.2f} degrees")
+        logger.debug(f"theta[{i+1}] = {theta[i]:.2f} degrees")
 
     return tuple(theta)
 
-def calculate_fk(self, angle_0: float, angle_1: float, angle_2: float, angle_3: float, angle_4: float, angle_5: float, verbose = False) -> Tuple[float, float, float, float, float, float]:
+def calculate_fk(angle_0: float, angle_1: float, angle_2: float, angle_3: float, angle_4: float, angle_5: float) -> Tuple[float, float, float, float, float, float]:
         epsilon = 0.001
 
         #to prevent singularities
@@ -167,7 +168,7 @@ def calculate_fk(self, angle_0: float, angle_1: float, angle_2: float, angle_3: 
         dh = np.array([np.eye(4) for _ in range(6)])
         tr = np.array([np.eye(4) for _ in range(6)])
 
-        axis_values = list(angle_0, angle_1, angle_2, angle_3, angle_4, angle_5)
+        axis_values = [angle_0, angle_1, angle_2, angle_3, angle_4, angle_5]
 
         for i in range(6):
             dh[i] = dh_matrix(ROBOT_DH_PARAMS[i][0], ROBOT_DH_PARAMS[i][1], ROBOT_DH_PARAMS[i][2], math.radians(axis_values[i]))
@@ -180,8 +181,8 @@ def calculate_fk(self, angle_0: float, angle_1: float, angle_2: float, angle_3: 
 
         for i in range(0,6):
             pos2 = pose_from_transform(tr[i], degrees=True)
-            if verbose:
-                print(f"Joint {i+1} pos: x={x:.2f}, y={y:.2f}, z={z:.2f}, a={a2:.2f}, b={b2:.2f}, c={c2:.2f}")
+            x, y, z, a, b, c = pos2
+            logger.debug(f"Joint {i+1} pos: x={x:.2f}, y={y:.2f}, z={z:.2f}, a={a:.2f}, b={b:.2f}, c={c:.2f}")
             pos = pos2
 
 

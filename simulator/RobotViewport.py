@@ -7,7 +7,7 @@ from Wrapper import Wrapper
 class RobotViewport(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(300)
+        self.setMinimumHeight(500)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
 

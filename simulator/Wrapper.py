@@ -55,7 +55,7 @@ class Wrapper:
 		self.dll.InitializeScene()
 
 	def _RobotMove(self, idx: int, x: float, y: float, z: float, angle_0: float, angle_1: float, angle_2: float, angle_3: float, angle_4: float, angle_5: float):
-		self.dll.RobotMove(idx, x/10, y/10, z/10, np.deg2rad(angle_0)-np.pi/2, np.deg2rad(angle_1), np.deg2rad(angle_2), np.deg2rad(angle_3)-np.pi/2, np.deg2rad(angle_4), np.deg2rad(angle_5))
+		self.dll.RobotMove(idx, x/10, y/10, z/10, np.deg2rad(angle_0)-np.pi/2, np.deg2rad(angle_1)-np.pi/2, np.deg2rad(angle_2)-np.pi/2, np.deg2rad(angle_3)-np.pi/2, np.deg2rad(angle_4), np.deg2rad(angle_5))
 
 	def moveRobot(self, idx: int, x: float, y: float, z: float):
 		self._ensure_idx(idx)

@@ -7,6 +7,13 @@ from IK_TAB import IK_TAB
 from FK_TAB import FK_TAB
 from kinematicManager import kinematicManager
 
+import logging
+
+logging.basicConfig(
+    level=logging.WARNING,  # INFO / DEBUG / WARNING / ERROR
+    format="%(levelname)s: %(message)s"
+)
+
 class MainWindow(QtWidgets.QSplitter):
     def __init__(self):
         super().__init__(QtCore.Qt.Orientation.Vertical)

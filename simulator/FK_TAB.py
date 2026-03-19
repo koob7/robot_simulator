@@ -20,25 +20,28 @@ class FK_TAB(QtWidgets.QWidget):
         joint_layout = QtWidgets.QGridLayout(joint_group)
         joint_layout.setSpacing(6)
 
-        for i in range(self.N_ARM_SLIDERS):
-            self.sliders[i] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-            self.sliders[i].setMinimum(-180)
-            self.sliders[i].setMaximum(180)
-            self.sliders[i].setSingleStep(1)
-            self.sliders[i].setPageStep(10)
-            self.sliders[i].setValue(0)
+        for idx in range(self.N_ARM_SLIDERS):
+            self.sliders[idx] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+            self.sliders[idx].setMinimum(-180)
+            self.sliders[idx].setMaximum(180)
+            self.sliders[idx].setSingleStep(1)
+            self.sliders[idx].setPageStep(10)
+            self.sliders[idx].setValue(0)
 
-            label = QtWidgets.QLabel(f"Joint {i + 1}:")
+            label = QtWidgets.QLabel(f"Joint {idx + 1}:")
             label.setStyleSheet("font-weight: bold;")
-            self.value_labels[i] = QtWidgets.QLabel("0°")
-            font = self.value_labels[i].font()
+            self.value_labels[idx] = QtWidgets.QLabel("0°")
+            font = self.value_labels[idx].font()
             font.setBold(True)
-            self.value_labels[i].setFont(font)
-            self.value_labels[i].setMinimumWidth(60)
+            self.value_labels[idx].setFont(font)
+            self.value_labels[idx].setMinimumWidth(60)
+            self.sliders[idx].valueChanged.connect(
+                lambda value, idx=idx: self.update_label(idx, value)
+            )
 
-            joint_layout.addWidget(label, i, 0)
-            joint_layout.addWidget(self.sliders[i], i, 1)
-            joint_layout.addWidget(self.value_labels[i], i, 2)
+            joint_layout.addWidget(label, idx, 0)
+            joint_layout.addWidget(self.sliders[idx], idx, 1)
+            joint_layout.addWidget(self.value_labels[idx], idx, 2)
 
         main_layout.addWidget(joint_group)
 
@@ -53,9 +56,20 @@ class FK_TAB(QtWidgets.QWidget):
         for slider in self.sliders:
             slider.setValue(0)
 
+    def update_label(self, idx, value):
+        self.value_labels[idx].setText(f"{value}°")
+
     def link_fk_changed_callback(self, callback):
         for slider in self.sliders:
             slider.valueChanged.connect(callback)
 
     def get_values(self):
         return [slider.value() for slider in self.sliders]
+    
+    def set_values(self, angle_0: int, angle_1: int, angle_2: int, angle_3: int, angle_4: int, angle_5: int):
+        angles = [angle_0, angle_1, angle_2, angle_3, angle_4, angle_5]
+        for idx in range(self.N_ARM_SLIDERS):
+            self.value_labels[idx].setText(f"{angles[idx]}°")
+            self.sliders[idx].blockSignals(True)
+            self.sliders[idx].setValue(angles[idx])
+            self.sliders[idx].blockSignals(False)
