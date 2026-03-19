@@ -63,6 +63,33 @@ class kinematicManager:
         target_pose = self.ik_tab.get_values()
         logger.debug(f"IK released target pose: {target_pose}")
 
+        self._plan_linear_pose_motion(target_pose)
+
+    def _animate_edges_step(self):
+        if self._edges_path_idx >= len(self._edges_path):
+            self._edges_anim_timer.stop()
+            return
+
+        ik_step = self._edges_path[self._edges_path_idx]
+        self.wrapper.rotateRobot(self.ROBOT_IK, *ik_step)
+        self._edges_path_idx += 1
+
+    def fk_released_callback(self, _value=None):
+        target_angles = self.fk_tab.get_values()
+        target_pose = calculate_fk(
+            target_angles[0],
+            target_angles[1],
+            target_angles[2],
+            target_angles[3],
+            target_angles[4],
+            target_angles[5],
+        )
+        logger.debug(f"FK released target pose (from FK): {target_pose}")
+
+        self._plan_linear_pose_motion(target_pose)
+
+
+    def _plan_linear_pose_motion(self, target_pose):
         current_angles = (
             self.wrapper.actual_angle_0[self.ROBOT_IK],
             self.wrapper.actual_angle_1[self.ROBOT_IK],
@@ -125,15 +152,3 @@ class kinematicManager:
             if self._edges_anim_timer.isActive():
                 self._edges_anim_timer.stop()
             self._edges_anim_timer.start()
-
-    def _animate_edges_step(self):
-        if self._edges_path_idx >= len(self._edges_path):
-            self._edges_anim_timer.stop()
-            return
-
-        ik_step = self._edges_path[self._edges_path_idx]
-        self.wrapper.rotateRobot(self.ROBOT_IK, *ik_step)
-        self._edges_path_idx += 1
-
-    def fk_released_callback(self, _value=None):
-        pass

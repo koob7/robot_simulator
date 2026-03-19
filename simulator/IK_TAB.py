@@ -88,6 +88,7 @@ class IK_TAB(QtWidgets.QWidget):
     def reset_value(self):
         for slider in self.sliders:
             slider.setValue(0)
+        self.ik_released_callback()
 
     def link_ik_changed_callback(self, callback):
         for slider in self.sliders:
@@ -96,6 +97,7 @@ class IK_TAB(QtWidgets.QWidget):
     def link_ik_released_callback(self, callback):
         for slider in self.sliders:
             slider.sliderReleased.connect(callback)
+        self.ik_released_callback = callback
 
     def update_label(self, idx, value):
         if idx < self.N_POSITION_SLIDERS:

@@ -55,6 +55,7 @@ class FK_TAB(QtWidgets.QWidget):
     def reset_value(self):
         for slider in self.sliders:
             slider.setValue(0)
+        self.fk_released_callback()
 
     def update_label(self, idx, value):
         self.value_labels[idx].setText(f"{value}°")
@@ -65,7 +66,8 @@ class FK_TAB(QtWidgets.QWidget):
 
     def link_fk_released_callback(self, callback):
         for slider in self.sliders:
-            slider.sliderReleased.connect(callback)
+            self.fk_released_callback = callback
+        slider.sliderReleased.connect(callback)
 
     def get_values(self):
         return [slider.value() for slider in self.sliders]
