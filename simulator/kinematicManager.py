@@ -1,8 +1,10 @@
 
 from kinematic_helper import *
 from Wrapper import Wrapper
+from PySide6 import QtCore
 
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,12 @@ class kinematicManager:
         self.wrapper.moveRobot(self.ROBOT_FK, 300, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_IK, 0, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_EDGES, -300, 0, 0)#TODO temporary
+
+        self._edges_path = []
+        self._edges_path_idx = 0
+        self._edges_anim_timer = QtCore.QTimer()
+        self._edges_anim_timer.setInterval(16)
+        self._edges_anim_timer.timeout.connect(self._animate_edges_step)
 
     def ik_changed_callback(self, _value=None):
         user_position = self.ik_tab.get_values()
@@ -52,7 +60,70 @@ class kinematicManager:
         self.ik_tab.set_values(int(fk_result[0]), int(fk_result[1]), int(fk_result[2]), int(fk_result[3]), int(fk_result[4]), int(fk_result[5]))
 
     def ik_released_callback(self, _value=None):
-        pass
+        target_pose = self.ik_tab.get_values()
+        logger.debug(f"IK released target pose: {target_pose}")
+
+        current_angles = (
+            self.wrapper.actual_angle_0[self.ROBOT_EDGES],
+            self.wrapper.actual_angle_1[self.ROBOT_EDGES],
+            self.wrapper.actual_angle_2[self.ROBOT_EDGES],
+            self.wrapper.actual_angle_3[self.ROBOT_EDGES],
+            self.wrapper.actual_angle_4[self.ROBOT_EDGES],
+            self.wrapper.actual_angle_5[self.ROBOT_EDGES],
+        )
+        current_pose = calculate_fk(*current_angles)
+
+        linear_distance = math.sqrt(
+            (target_pose[0] - current_pose[0]) ** 2
+            + (target_pose[1] - current_pose[1]) ** 2
+            + (target_pose[2] - current_pose[2]) ** 2
+        )
+        angular_distance = math.sqrt(
+            (target_pose[3] - current_pose[3]) ** 2
+            + (target_pose[4] - current_pose[4]) ** 2
+            + (target_pose[5] - current_pose[5]) ** 2
+        )
+
+        steps_by_position = int(linear_distance / 2.0)
+        steps_by_orientation = int(angular_distance / 1.0)
+        steps = max(10, min(1200, max(steps_by_position, steps_by_orientation)))
+
+        previous_angles = current_angles
+        path = []
+        for step in range(1, steps + 1):
+            t = step / steps
+            interpolated_pose = [
+                current_pose[i] + (target_pose[i] - current_pose[i]) * t
+                for i in range(6)
+            ]
+
+            ik_step = list(calculate_ik(*interpolated_pose))
+
+            # Keep each axis close to the previous one to avoid 360-degree jumps.
+            for i in range(6):
+                while ik_step[i] - previous_angles[i] > 180.0:
+                    ik_step[i] -= 360.0
+                while ik_step[i] - previous_angles[i] < -180.0:
+                    ik_step[i] += 360.0
+
+            path.append(tuple(ik_step))
+            previous_angles = tuple(ik_step)
+
+        self._edges_path = path
+        self._edges_path_idx = 0
+        if self._edges_path:
+            if self._edges_anim_timer.isActive():
+                self._edges_anim_timer.stop()
+            self._edges_anim_timer.start()
+
+    def _animate_edges_step(self):
+        if self._edges_path_idx >= len(self._edges_path):
+            self._edges_anim_timer.stop()
+            return
+
+        ik_step = self._edges_path[self._edges_path_idx]
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_step)
+        self._edges_path_idx += 1
 
     def fk_released_callback(self, _value=None):
         pass
