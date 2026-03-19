@@ -50,3 +50,9 @@ class kinematicManager:
 
         self.wrapper.rotateRobot(self.ROBOT_IK, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
         self.ik_tab.set_values(int(fk_result[0]), int(fk_result[1]), int(fk_result[2]), int(fk_result[3]), int(fk_result[4]), int(fk_result[5]))
+
+    def ik_released_callback(self, _value=None):
+        pass
+
+    def fk_released_callback(self, _value=None):
+        pass

@@ -93,6 +93,10 @@ class IK_TAB(QtWidgets.QWidget):
         for slider in self.sliders:
             slider.valueChanged.connect(callback)
 
+    def link_ik_released_callback(self, callback):
+        for slider in self.sliders:
+            slider.sliderReleased.connect(callback)
+
     def update_label(self, idx, value):
         if idx < self.N_POSITION_SLIDERS:
             self.value_labels[idx].setText(f"{value} mm")
