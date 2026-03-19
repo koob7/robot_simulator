@@ -1,6 +1,4 @@
 import sys
-import time
-import math
 from PySide6 import QtCore, QtWidgets, QtGui
 
 from Wrapper import Wrapper
@@ -30,6 +28,9 @@ class MainWindow(QtWidgets.QSplitter):
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
+
+    # Apply modern stylesheet
+    app.setStyle("Fusion")
 
     window = MainWindow()
     window.show()
