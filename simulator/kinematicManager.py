@@ -106,7 +106,17 @@ class kinematicManager:
                 while ik_step[i] - previous_angles[i] < -180.0:
                     ik_step[i] += 360.0
 
-            path.append(tuple(ik_step))
+            max_delta = max(abs(ik_step[i] - previous_angles[i]) for i in range(6))
+            substeps = max(1, int(math.ceil(max_delta / 1.0)))
+
+            for substep in range(1, substeps + 1):
+                ratio = substep / substeps
+                limited_step = tuple(
+                    previous_angles[i] + (ik_step[i] - previous_angles[i]) * ratio
+                    for i in range(6)
+                )
+                path.append(limited_step)
+
             previous_angles = tuple(ik_step)
 
         self._edges_path = path
