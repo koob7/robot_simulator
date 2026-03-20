@@ -24,6 +24,24 @@
 			],
 			"group": "build",
 			"detail": "compiler: D:/progamFiles/mingw64_8/bin/gcc.exe"
+		},
+		{
+			"label": "Build executable",
+			"type": "shell",
+			"command": "pyinstaller",
+			"args": [
+				"-F",
+				"-n",
+				"robot_simulator",
+				"simulator/main.py",
+				"--add-binary",
+				"\"opengl_exe/opengl_drawer.dll:opengl_exe\"",
+				"--add-data",
+				"\"3d_models:3d_models\"",
+				"--add-data",
+				"\"opengl_source/shaders:opengl_source/shaders\""
+			],
+			"group": "build"
 		}
 	]
 }

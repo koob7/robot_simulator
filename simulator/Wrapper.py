@@ -1,10 +1,17 @@
-from ctypes import CDLL, c_uint64, c_uint32, c_float, c_int32
+from ctypes import CDLL, c_uint64, c_uint32, c_float, c_int32, c_char_p
 import numpy as np
+import sys
+import os
 
-
+def resource_path(relative_path):
+	if hasattr(sys, '_MEIPASS'):
+		return os.path.join(sys._MEIPASS, relative_path)
+	return os.path.join(os.path.abspath("."), relative_path)
 class Wrapper:
 	def __init__(self):
-		self.dll = CDLL('opengl_exe/opengl_drawer.dll')
+		dll_path = resource_path('opengl_exe/opengl_drawer.dll')
+		self.dll = CDLL(dll_path)
+		self.dll.InitializeScene.argtypes = [c_char_p, c_char_p]
 		self.dll.Initialize.argtypes = [c_uint64]
 		self.dll.CalcProjectionMatrix.argtypes = [c_int32, c_int32]
 		self.dll.SetCamera.argtypes = [c_float, c_float, c_float, c_float, c_float]
@@ -52,7 +59,9 @@ class Wrapper:
 		self.dll.SetCamera(x, y, z, angle_x, angle_y)
 
 	def InitializeScene(self):
-		self.dll.InitializeScene()
+		shaders_path = resource_path("opengl_source/shaders")
+		models_path = resource_path("3d_models")
+		self.dll.InitializeScene(shaders_path.encode(), models_path.encode())
 
 	def _RobotMove(self, idx: int, x: float, y: float, z: float, angle_0: float, angle_1: float, angle_2: float, angle_3: float, angle_4: float, angle_5: float):
 		self.dll.RobotMove(idx, x/10, y/10, z/10, np.deg2rad(angle_0)-np.pi/2, np.deg2rad(angle_1)-np.pi/2, np.deg2rad(angle_2)-np.pi/2, np.deg2rad(angle_3)-np.pi/2, np.deg2rad(angle_4), np.deg2rad(angle_5))

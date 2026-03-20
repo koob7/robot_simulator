@@ -65,6 +65,18 @@
       "cwd": "${workspaceFolder}"
     },
     {
+      "name": "Build exe from python",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "C:/Windows/System32/cmd.exe",
+      "args": [
+        "/c",
+        "aplikacja exe zbudowana!!"
+      ],
+      "preLaunchTask": "Build executable",
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "name": "C/C++ Runner: Debug Session",
       "type": "cppdbg",
       "request": "launch",

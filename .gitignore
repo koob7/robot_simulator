@@ -1,3 +1,5 @@
 /opengl_source
-example/__pycache__
+/example/__pycache__
 /simulator/__pycache__
+/build
+robot_simulator.spec
