@@ -21,9 +21,10 @@ class kinematicManager:
 
         # Stepper motor parameters
         self.MAX_ANGULAR_SPEED = 60.0  # degrees per second (max speed for any joint)
-        self.LINEAR_VELOCITY = 50.0     # mm/s (target constant linear velocity)
+        self.LINEAR_VELOCITY = 100.0     # mm/s (target constant linear velocity)
+        self.LINERAR_SPEED_UP_VELOCITY = 25.0     # mm/s^2 (velocity during acceleration phase)
         self.FRAME_TIME = 0.016         # 16ms per frame (~60 FPS)
-        self.RAMP_TIME = 2          # acceleration/deceleration time in seconds
+        self.SINGLE_STEP_DISTANCE = 0.5  # mm (for simple linear interpolation)
 
         self.wrapper = Wrapper()
 
@@ -31,11 +32,11 @@ class kinematicManager:
         self.wrapper.moveRobot(self.ROBOT_IK, 0, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_EDGES, 0, 0, 0)
 
-        self._edges_path = []
-        self._edges_path_idx = 0
-        self._edges_anim_timer = QtCore.QTimer()
-        self._edges_anim_timer.setInterval(16)
-        self._edges_anim_timer.timeout.connect(self._animate_edges_step)
+
+        self.path = []
+        self.path_steps = 0
+        self.simulation_timer = QtCore.QTimer()
+        self.simulation_timer.timeout.connect(self.animate_movement)
 
     def ik_changed_callback(self, _value=None):
         user_position = self.ik_tab.get_values()
@@ -68,54 +69,23 @@ class kinematicManager:
         target_pose = self.ik_tab.get_values()
         logger.debug(f"IK released target pose: {target_pose}")
 
-        self._plan_linear_pose_motion(target_pose)
+        #self._plan_linear_pose_motion(target_pose)
+        self.motion_planner(target_pose)
 
-    def _animate_edges_step(self):
-        if self._edges_path_idx >= len(self._edges_path):
-            self._edges_anim_timer.stop()
+    def animate_movement(self):
+        if not self.path:
+            self.simulation_timer.stop()
             return
 
-        ik_step = self._edges_path[self._edges_path_idx]
-        self.wrapper.rotateRobot(self.ROBOT_IK, *ik_step)
-        self._edges_path_idx += 1
+        if self.path_steps == 0:
+            self.simulation_timer.stop()
+            return
+        
+        step_time, angles = self.path.pop(0)
+        self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
+        self.simulation_timer.setInterval(int(step_time * 1000))
+        self.path_steps -= 1
 
-    def _get_velocity_profile(self, num_frames):
-        """
-        Generate normalized velocity profile with smooth S-curve ramps.
-        Returns list of weights (sum = 1.0).
-        """
-
-        ramp_frames = int(self.RAMP_TIME / self.FRAME_TIME)
-        ramp_frames = max(2, min(ramp_frames, num_frames // 2))
-
-        profile = []
-
-        def smoothstep(x):
-            # S-curve: 3x^2 - 2x^3 (lepsze niż kwadrat)
-            return x * x * (3 - 2 * x)
-
-        for i in range(num_frames):
-            if i < ramp_frames:
-                # acceleration
-                t = i / (ramp_frames - 1)
-                v = smoothstep(t)
-
-            elif i >= num_frames - ramp_frames:
-                # deceleration
-                t = (i - (num_frames - ramp_frames)) / (ramp_frames - 1)
-                v = smoothstep(1 - t)
-
-            else:
-                # constant velocity
-                v = 1.0
-
-            profile.append(v)
-
-        # 🔑 NORMALIZACJA (kluczowa!)
-        total = sum(profile)
-        profile = [v / total for v in profile]
-
-        return profile
 
     def fk_released_callback(self, _value=None):
         target_angles = self.fk_tab.get_values()
@@ -129,15 +99,28 @@ class kinematicManager:
         )
         logger.debug(f"FK released target pose (from FK): {target_pose}")
 
-        self._plan_linear_pose_motion(target_pose)
+        self.motion_planner(target_pose)
 
 
-    def _plan_linear_pose_motion(self, target_pose):
-        """
-        Linear Cartesian motion with smooth velocity ramping (S-curve)
-        and joint speed constraints.
-        """
+    def interpolate_pose(self, pose1, pose2, t):
+        return tuple(
+            pose1[i] + (pose2[i] - pose1[i]) * t
+            for i in range(6)
+        )
+    
+    def unwrap_angles(self, angles, reference):
+        unwrapped = []
+        for i in range(6):
+            angle = angles[i]
+            while angle - reference[i] > 180.0:
+                angle -= 360.0
+            while angle - reference[i] < -180.0:
+                angle += 360.0
+            unwrapped.append(angle)
+        return tuple(unwrapped)
 
+
+    def motion_planner (self, target_pose):
         current_angles = (
             self.wrapper.actual_angle_0[self.ROBOT_IK],
             self.wrapper.actual_angle_1[self.ROBOT_IK],
@@ -154,73 +137,68 @@ class kinematicManager:
             sum((target_pose[i] - current_pose[i]) ** 2 for i in range(3))
         )
 
+
         if linear_distance < 0.1:
-            logger.debug(f"Very small movement ({linear_distance:.2f}mm)")
-            self._edges_path = [calculate_ik(*target_pose)]
-            self._edges_path_idx = 0
-            if self._edges_anim_timer.isActive():
-                self._edges_anim_timer.stop()
-            self._edges_anim_timer.start()
+            logger.debug("veryu small movement, temporary skip")
             return
+        
+        step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)
 
-        motion_time = linear_distance / self.LINEAR_VELOCITY
-        num_frames = max(10, int(motion_time / self.FRAME_TIME))
-
-        # 🔑 velocity profile (normalized)
-        velocity_profile = self._get_velocity_profile(num_frames)
-
-        # 🔑 cumulative t (0 → 1)
-        t_values = []
-        cumulative = 0.0
-        for v in velocity_profile:
-            cumulative += v
-            t_values.append(cumulative)
-
-        path = []
+        forward_path = []
         previous_angles = current_angles
 
-        for frame in range(num_frames):
-            t = t_values[frame]
+        speed_up_distance = self.LINEAR_VELOCITY**2/(2*self.LINERAR_SPEED_UP_VELOCITY) #distance needed to reach target velocity with defined acceleration
+        speed_up_steps = math.ceil(speed_up_distance/self.SINGLE_STEP_DISTANCE) #number of steps needed to reach target velocity with defined acceleration
 
-            # Cartesian interpolation
-            interpolated_pose = [
-                current_pose[i] + (target_pose[i] - current_pose[i]) * t
-                for i in range(6)
-            ]
+        if (speed_up_steps>step_number):
+            speed_up_steps = math.ceil(step_number/2)
 
-            ik_step = list(calculate_ik(*interpolated_pose))
+        for step in range(1, step_number+1):
 
-            # unwrap angles
-            for i in range(6):
-                while ik_step[i] - previous_angles[i] > 180.0:
-                    ik_step[i] -= 360.0
-                while ik_step[i] - previous_angles[i] < -180.0:
-                    ik_step[i] += 360.0
+            if step<= speed_up_steps:
+                print("Przyspieszanie")
+                time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
-            max_delta = max(abs(ik_step[i] - previous_angles[i]) for i in range(6))
+                #TODO - later check if any motor does not rotate to fast
+                tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
+                tmp = self.unwrap_angles(tmp, previous_angles)
 
-            max_step = self.MAX_ANGULAR_SPEED * self.FRAME_TIME
-            substeps = max(1, math.ceil(max_delta / max_step))
+                forward_path.append((time, tmp))
+                previous_angles = tmp
+                continue
 
-            for substep in range(1, substeps + 1):
-                ratio = substep / substeps
-                step = tuple(
-                    previous_angles[i] + (ik_step[i] - previous_angles[i]) * ratio
-                    for i in range(6)
-                )
-                path.append(step)
+            if step>= step_number - speed_up_steps:
+                print("Hamowanie")
+                remaining_steps = step_number - step + 1
+                time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
-            previous_angles = tuple(ik_step)
+                #TODO - later check if any motor does not rotate to fast
+                tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
+                tmp = self.unwrap_angles(tmp, previous_angles)
+                
+                forward_path.append((time, tmp))
+                previous_angles = tmp                               
+                continue
 
-        self._edges_path = path
-        self._edges_path_idx = 0
+            if step>speed_up_steps and step<(step_number - speed_up_steps):
+                print("Stała prędkość")
+                time  = self.SINGLE_STEP_DISTANCE/self.LINEAR_VELOCITY
+               
 
-        logger.debug(
-            f"Motion planned: {len(path)} steps, "
-            f"time={motion_time:.2f}s, ramp={self.RAMP_TIME:.2f}s"
-        )
+                #TODO - later check if any motor does not rotate to fast
+                tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
+                tmp = self.unwrap_angles(tmp, previous_angles)
 
-        if self._edges_path:
-            if self._edges_anim_timer.isActive():
-                self._edges_anim_timer.stop()
-            self._edges_anim_timer.start()
+
+                forward_path.append((time, tmp))
+                previous_angles = tmp
+                continue
+                
+
+        self.path  = forward_path
+        self.path_steps = step_number
+
+        self.simulation_timer.start()
+        self.animate_movement()
+
+
