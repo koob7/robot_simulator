@@ -19,6 +19,7 @@ class RobotViewport(QtWidgets.QWidget):
         self.render_timer.timeout.connect(self.render_frame)
 
         self.speed = 50.0
+        self.velocity = 0.0
         self.previous_time = time.monotonic()
         self.mouse_sensitivity = 0.003
         self.max_pitch = 1.45
@@ -166,7 +167,7 @@ class RobotViewport(QtWidgets.QWidget):
             self.wrapper.CalcProjectionMatrix(max(1, event.size().width()), max(1, event.size().height()))
 
     def update_speed_label(self):
-        self.speedLabel.setText(f"Speed: {self.speed:.1f}")
+        self.speedLabel.setText(f"Speed: {self.velocity:.1f}")
         self.speedLabel.adjustSize()
         self.position_speed_label()
 
@@ -219,5 +220,5 @@ class RobotViewport(QtWidgets.QWidget):
             self.wrapper.Render()
 
     def velocity_changed_callback(self, value):
-        self.speed = value
+        self.velocity = value
         self.update_speed_label()
