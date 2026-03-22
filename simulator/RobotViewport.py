@@ -36,6 +36,19 @@ class RobotViewport(QtWidgets.QWidget):
         self.homeButton.raise_()
         self.homeButton.clicked.connect(self.resetView)
 
+        self.speedLabel = QtWidgets.QLabel(self)
+        self.speedLabel.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
+        self.speedLabel.setStyleSheet(
+            "QLabel {"
+            "color: white;"
+            "background-color: rgba(0, 0, 0, 140);"
+            "padding: 4px 8px;"
+            "border-radius: 4px;"
+            "}"
+        )
+        self.update_speed_label()
+        self.speedLabel.raise_()
+
 
         self.resetView()
 
@@ -147,8 +160,19 @@ class RobotViewport(QtWidgets.QWidget):
         super().resizeEvent(event)
         self.homeButton.move(10, 10)
         self.homeButton.raise_()
+        self.position_speed_label()
+        self.speedLabel.raise_()
         if self._initialized:
             self.wrapper.CalcProjectionMatrix(max(1, event.size().width()), max(1, event.size().height()))
+
+    def update_speed_label(self):
+        self.speedLabel.setText(f"Speed: {self.speed:.1f}")
+        self.speedLabel.adjustSize()
+        self.position_speed_label()
+
+    def position_speed_label(self):
+        x = max(10, self.width() - self.speedLabel.width() - 10)
+        self.speedLabel.move(x, 10)
 
     def updateCamera(self):
         if self._initialized:
@@ -189,6 +213,11 @@ class RobotViewport(QtWidgets.QWidget):
             if QtCore.Qt.Key.Key_E in self.keys_pressed:
                 self.actual_y -= move
 
+            self.update_speed_label()
             self.updateCamera()
 
             self.wrapper.Render()
+
+    def velocity_changed_callback(self, value):
+        self.speed = value
+        self.update_speed_label()

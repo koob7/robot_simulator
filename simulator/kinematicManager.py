@@ -21,7 +21,7 @@ class kinematicManager:
 
         # Stepper motor parameters
         self.MAX_ANGULAR_SPEED = 60.0  # degrees per second (max speed for any joint)
-        self.LINEAR_VELOCITY = 100.0     # mm/s (target constant linear velocity)
+        self.LINEAR_VELOCITY = 60.0     # mm/s (target constant linear velocity)
         self.LINERAR_SPEED_UP_VELOCITY = 25.0     # mm/s^2 (velocity during acceleration phase)
         self.FRAME_TIME = 0.016         # 16ms per frame (~60 FPS)
         self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
@@ -77,15 +77,18 @@ class kinematicManager:
     def animate_movement(self):
         if not self.path:
             self.simulation_timer.stop()
+            self.velocity_changed_callback(0)
             return
 
         if self.path_steps == 0:
             self.simulation_timer.stop()
+            self.velocity_changed_callback(0)
             return
         
-        step_time, angles, speed = self.path.pop(0)
+        step_time, angles, velocity = self.path.pop(0)
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
         self.simulation_timer.setInterval(int(step_time * 1000))
+        self.velocity_changed_callback(velocity)
         self.path_steps -= 1
 
 
@@ -102,6 +105,10 @@ class kinematicManager:
         logger.debug(f"FK released target pose (from FK): {target_pose}")
 
         self.motion_planner(target_pose)
+
+    def connect_velocity_changed_callback(self, callback):
+        self.velocity_changed_callback = callback
+        callback(0)
 
 
     def interpolate_pose(self, pose1, pose2, t):
