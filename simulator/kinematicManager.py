@@ -36,27 +36,27 @@ class kinematicManager:
         user_position = self.ik_tab.get_values()
         logger.debug(f"User input IK: {user_position}")
 
-        ik_result = calculate_ik(user_position[0], user_position[1], user_position[2], user_position[3], user_position[4], user_position[5])
-        self.wrapper.rotateRobot(self.ROBOT_EDGES, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
+        ik_result = calculate_ik(*user_position)
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
 
         #check calculated ik result with fk
-        fk_result = calculate_fk(ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
-        eval_ik_result = calculate_ik( fk_result[0], fk_result[1], fk_result[2], fk_result[3], fk_result[4], fk_result[5])
+        fk_result = calculate_fk(*ik_result)
+        eval_ik_result = calculate_ik(*fk_result)
 
-        self.wrapper.rotateRobot(self.ROBOT_FK, eval_ik_result[0], eval_ik_result[1], eval_ik_result[2], eval_ik_result[3], eval_ik_result[4], eval_ik_result[5])
+        self.wrapper.rotateRobot(self.ROBOT_FK, *eval_ik_result)
         self.fk_tab.set_values(int(eval_ik_result[0]), int(eval_ik_result[1]), int(eval_ik_result[2]), int(eval_ik_result[3]), int(eval_ik_result[4]), int(eval_ik_result[5]))
 
     def fk_changed_callback(self, _value=None):
         user_angles = self.fk_tab.get_values()
         logger.debug(f"User input FK: {user_angles}")
 
-        self.wrapper.rotateRobot(self.ROBOT_FK, user_angles[0], user_angles[1], user_angles[2], user_angles[3], user_angles[4], user_angles[5])
+        self.wrapper.rotateRobot(self.ROBOT_FK, *user_angles)
 
         #check calculated fk result with ik
-        fk_result = calculate_fk(user_angles[0], user_angles[1], user_angles[2], user_angles[3], user_angles[4], user_angles[5])
-        ik_result =  calculate_ik(fk_result[0], fk_result[1], fk_result[2], fk_result[3], fk_result[4], fk_result[5])
+        fk_result = calculate_fk(*user_angles)
+        ik_result =  calculate_ik(*fk_result)
 
-        self.wrapper.rotateRobot(self.ROBOT_EDGES, ik_result[0], ik_result[1], ik_result[2], ik_result[3], ik_result[4], ik_result[5])
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
         self.ik_tab.set_values(int(fk_result[0]), int(fk_result[1]), int(fk_result[2]), int(fk_result[3]), int(fk_result[4]), int(fk_result[5]))
 
     def ik_released_callback(self, _value=None):

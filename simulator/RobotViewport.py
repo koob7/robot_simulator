@@ -18,13 +18,6 @@ class RobotViewport(QtWidgets.QWidget):
         self.render_timer.setInterval(16)
         self.render_timer.timeout.connect(self.render_frame)
 
-        self.actual_x = 5.0
-        self.actual_y = 0.0
-        self.actual_z = 0.0
-
-        self.yaw = 0.0
-        self.pitch = 0.0
-
         self.speed = 50.0
         self.previous_time = time.monotonic()
         self.mouse_sensitivity = 0.003
@@ -48,11 +41,11 @@ class RobotViewport(QtWidgets.QWidget):
 
 
     def resetView(self):
-        self.actual_x = 0
-        self.actual_y = 20
-        self.actual_z = -80
-        self.yaw = 0.00
-        self.pitch = 0.08
+        self.actual_x = 44
+        self.actual_y = 33
+        self.actual_z = 75
+        self.yaw = - 144 * math.pi / 180
+        self.pitch = -8 * math.pi / 180
         self.updateCamera()
 
 
@@ -71,10 +64,25 @@ class RobotViewport(QtWidgets.QWidget):
             self.setCursor(QtCore.Qt.CursorShape.BlankCursor)
             event.accept()
             return
+        if event.button() == QtCore.Qt.MouseButton.MiddleButton:
+            self.keys_pressed.add(QtCore.Qt.MouseButton.MiddleButton)
+            self.is_rotating = True
+            self.last_mouse_pos = event.position()
+            self.setFocus()
+            self.setCursor(QtCore.Qt.CursorShape.BlankCursor)
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.is_rotating = False
+            self.last_mouse_pos = None
+            self.unsetCursor()
+            event.accept()
+            return
+        if event.button() == QtCore.Qt.MouseButton.MiddleButton:
+            self.keys_pressed.discard(QtCore.Qt.MouseButton.MiddleButton)
             self.is_rotating = False
             self.last_mouse_pos = None
             self.unsetCursor()
@@ -88,13 +96,38 @@ class RobotViewport(QtWidgets.QWidget):
             delta = current_pos - self.last_mouse_pos
             self.last_mouse_pos = current_pos
 
-            self.yaw += delta.x() * self.mouse_sensitivity
-            self.pitch -= delta.y() * self.mouse_sensitivity
-            self.pitch = max(-self.max_pitch, min(self.max_pitch, self.pitch))
+            if QtCore.Qt.MouseButton.MiddleButton in self.keys_pressed:
+                move_speed = self.mouse_sensitivity * 15
+
+                right_x = math.cos(self.yaw)
+                right_z = -math.sin(self.yaw)
+
+                self.actual_x -= right_x * delta.x() * move_speed
+                self.actual_z -= right_z * delta.x() * move_speed
+                self.actual_y += delta.y() * move_speed
+            else:
+                self.yaw += delta.x() * self.mouse_sensitivity
+                self.pitch -= delta.y() * self.mouse_sensitivity
+                self.pitch = max(-self.max_pitch, min(self.max_pitch, self.pitch))
             self.updateCamera()
             event.accept()
             return
         super().mouseMoveEvent(event)
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        zoom_speed = self.mouse_sensitivity * 20
+        forward_x = math.sin(self.yaw)
+        forward_z = math.cos(self.yaw)
+        forward_y = math.sin(self.pitch)
+
+        self.actual_x += forward_x * delta * zoom_speed
+        self.actual_z += forward_z * delta * zoom_speed
+        self.actual_y += forward_y * delta * zoom_speed
+        self.updateCamera()
+        event.accept()
+
+        
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -120,7 +153,7 @@ class RobotViewport(QtWidgets.QWidget):
     def updateCamera(self):
         if self._initialized:
             self.wrapper.SetCamera(-self.actual_x, self.actual_y, self.actual_z, -self.yaw, -self.pitch)
-
+        
     def render_frame(self):
         if self._initialized:
             now = time.monotonic()
