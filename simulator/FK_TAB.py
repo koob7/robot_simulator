@@ -66,8 +66,9 @@ class FK_TAB(QtWidgets.QWidget):
 
     def link_fk_released_callback(self, callback):
         for slider in self.sliders:
-            self.fk_released_callback = callback
-        slider.sliderReleased.connect(callback)
+            slider.sliderReleased.connect(callback)
+        self.fk_released_callback = callback
+        
 
     def get_values(self):
         return [slider.value() for slider in self.sliders]
