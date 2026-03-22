@@ -24,7 +24,9 @@ class kinematicManager:
         self.LINEAR_VELOCITY = 100.0     # mm/s (target constant linear velocity)
         self.LINERAR_SPEED_UP_VELOCITY = 25.0     # mm/s^2 (velocity during acceleration phase)
         self.FRAME_TIME = 0.016         # 16ms per frame (~60 FPS)
-        self.SINGLE_STEP_DISTANCE = 0.5  # mm (for simple linear interpolation)
+        self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
+
+        self.max_motors_angle_speed = [self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED]
 
         self.wrapper = Wrapper()
 
@@ -40,7 +42,7 @@ class kinematicManager:
 
     def ik_changed_callback(self, _value=None):
         user_position = self.ik_tab.get_values()
-        #logger.debug(f"User input IK: {user_position}")
+        logger.debug(f"User input IK: {user_position}")
 
         ik_result = calculate_ik(*user_position)
         self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
@@ -54,7 +56,7 @@ class kinematicManager:
 
     def fk_changed_callback(self, _value=None):
         user_angles = self.fk_tab.get_values()
-        #logger.debug(f"User input FK: {user_angles}")
+        logger.debug(f"User input FK: {user_angles}")
 
         self.wrapper.rotateRobot(self.ROBOT_FK, *user_angles)
 
@@ -81,7 +83,7 @@ class kinematicManager:
             self.simulation_timer.stop()
             return
         
-        step_time, angles = self.path.pop(0)
+        step_time, angles, speed = self.path.pop(0)
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
         self.simulation_timer.setInterval(int(step_time * 1000))
         self.path_steps -= 1
@@ -118,6 +120,15 @@ class kinematicManager:
                 angle += 360.0
             unwrapped.append(angle)
         return tuple(unwrapped)
+    
+    def valid_max_angular_speed(self, angles1, angles2, time):
+        max_overspeed = 1.0
+        for i in range(6):
+            angular_speed = abs(angles2[i] - angles1[i]) / time
+            if angular_speed > self.max_motors_angle_speed[i]:
+                if angular_speed > max_overspeed:
+                    max_overspeed = angular_speed/self.max_motors_angle_speed[i]
+        return max_overspeed
 
 
     def motion_planner (self, target_pose):
@@ -139,7 +150,7 @@ class kinematicManager:
 
 
         if linear_distance < 0.1:
-            logger.debug("veryu small movement, temporary skip")
+            logger.debug("very small movement, temporary skip")
             return
         
         step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)
@@ -156,43 +167,25 @@ class kinematicManager:
         for step in range(1, step_number+1):
 
             if step<= speed_up_steps:
-                print("Przyspieszanie")
+                logger.debug("Przyspieszanie")
                 time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
-                #TODO - later check if any motor does not rotate to fast
-                tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
-                tmp = self.unwrap_angles(tmp, previous_angles)
-
-                forward_path.append((time, tmp))
-                previous_angles = tmp
-                continue
-
-            if step>= step_number - speed_up_steps:
-                print("Hamowanie")
+            elif step>= step_number - speed_up_steps:
+                logger.debug("Hamowanie")
                 remaining_steps = step_number - step + 1
                 time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
-                #TODO - later check if any motor does not rotate to fast
-                tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
-                tmp = self.unwrap_angles(tmp, previous_angles)
-                
-                forward_path.append((time, tmp))
-                previous_angles = tmp                               
-                continue
-
-            if step>speed_up_steps and step<(step_number - speed_up_steps):
-                print("Stała prędkość")
+            elif step>speed_up_steps and step<(step_number - speed_up_steps):
+                logger.debug("Stała prędkość")
                 time  = self.SINGLE_STEP_DISTANCE/self.LINEAR_VELOCITY
                
+            tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
+            tmp = self.unwrap_angles(tmp, previous_angles)    
 
-                #TODO - later check if any motor does not rotate to fast
-                tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
-                tmp = self.unwrap_angles(tmp, previous_angles)
+            time*= self.valid_max_angular_speed(previous_angles, tmp, time)
 
-
-                forward_path.append((time, tmp))
-                previous_angles = tmp
-                continue
+            forward_path.append((time, tmp, self.SINGLE_STEP_DISTANCE/time))
+            previous_angles = tmp
                 
 
         self.path  = forward_path
