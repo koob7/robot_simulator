@@ -1,5 +1,7 @@
 from PySide6 import QtCore, QtWidgets
 
+from kinematic_helper import A2, D1, D4, D6
+
 
 class IK_TAB(QtWidgets.QWidget):
     def __init__(self):
@@ -86,8 +88,13 @@ class IK_TAB(QtWidgets.QWidget):
         main_layout.addStretch()
 
     def reset_value(self):
-        for slider in self.sliders:
-            slider.setValue(0)
+
+        self.sliders[0].setValue(D4+D6)
+        self.sliders[1].setValue(0)
+        self.sliders[2].setValue(D1+A2)
+
+        for i in range(3, len(self.sliders)):
+            self.sliders[i].setValue(0)
         self.ik_released_callback()
 
     def link_ik_changed_callback(self, callback):

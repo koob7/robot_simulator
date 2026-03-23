@@ -34,6 +34,16 @@ class kinematicManager:
         self.wrapper.moveRobot(self.ROBOT_IK, 0, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_EDGES, 0, 0, 0)
 
+        default_pose = (D4+D6, 0, D1+A2, 0, 0, 0)
+        default_angles = calculate_ik(*default_pose)
+        
+        self.ik_tab.set_values(int(default_pose[0]), int(default_pose[1]), int(default_pose[2]), int(default_pose[3]), int(default_pose[4]), int(default_pose[5]))
+        self.fk_tab.set_values(int(default_angles[0]), int(default_angles[1]), int(default_angles[2]), int(default_angles[3]), int(default_angles[4]), int(default_angles[5]))
+
+        self.wrapper.rotateRobot(self.ROBOT_FK, *default_angles)
+        self.wrapper.rotateRobot(self.ROBOT_IK, *default_angles)
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, *default_angles)
+
         self.acceptable_simulated_errors = [ValidErrorCode.VALID, ValidErrorCode.WRONG_ANGLES, ValidErrorCode.TARGET_POSE_TOO_CLOSE, ValidErrorCode.WRIST_POSE_TOO_CLOSE]
 
 
