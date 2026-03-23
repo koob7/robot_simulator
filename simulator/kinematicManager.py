@@ -192,6 +192,8 @@ class kinematicManager:
             if error_code != ValidErrorCode.VALID:
                 logger.debug(f"Invalid pose at step {step}, skipping movement")
                 self.status_changed_callback(error_code.text())
+                self.simulation_timer.stop()
+                self.path = []
                 return
 
             tmp =  calculate_ik(*interpolated_pose)

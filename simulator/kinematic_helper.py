@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import numpy as np
 from typing import Tuple
 import math
@@ -16,6 +18,18 @@ MAX_ROBOT_TILT = A2 + D4 + D6
 MAX_ROBOT_WRIST_TILT = A2 + D4 
 
 ARM_SAFE_DISTANCE_TO_OBJECT = 25.0 # mm (minimalna odległość ramienia od obiektu, aby uniknąć kolizji)
+
+Limit = namedtuple("Limit", ["min", "max"])
+
+ANGLES_LIMIT = [
+    # (min, max) in degrees
+    Limit(-180, 180),  # Joint 1
+    Limit(-180, 180),  # Joint 2
+    Limit(-65,  235),  # Joint 3
+    Limit(-180, 180),  # Joint 4
+    Limit(-180, 180),  # Joint 5
+    Limit(-180, 180),  # Joint 6
+]
 
 # Wszystkie jednostki w mm, kąty w radianach (do obliczeń)
 ROBOT_DH_PARAMS = [
@@ -285,6 +299,12 @@ def valid_pose(x, y, z, roll, pitch, yaw) -> ValidErrorCode:
     
     if math.sqrt(Wx**2 + Wy**2) < 62.0 + ARM_SAFE_DISTANCE_TO_OBJECT and Wz > 0 - ARM_SAFE_DISTANCE_TO_OBJECT and Wz < 145 + ARM_SAFE_DISTANCE_TO_OBJECT: #nie można wejść do walca przy podstawie
         return ValidErrorCode.WRIST_POSE_TOO_CLOSE
+    
+    ik_result = calculate_ik(x, y, z, roll, pitch, yaw)
+
+    for i, angle in enumerate(ik_result):
+        if angle < ANGLES_LIMIT[i].min or angle > ANGLES_LIMIT[i].max:
+            return ValidErrorCode.WRONG_ANGLES
 
 
     return ValidErrorCode.VALID
