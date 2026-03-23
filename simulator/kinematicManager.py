@@ -193,6 +193,9 @@ class kinematicManager:
 
         for step in range(1, step_number+1):
 
+            interpolated_pose = self.interpolate_pose(current_pose, target_pose, step/step_number)
+            interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
+
             if step<= speed_up_steps:
                 time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
@@ -201,9 +204,8 @@ class kinematicManager:
                 time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
             elif step>speed_up_steps and step<(step_number - speed_up_steps):
-                time  = self.SINGLE_STEP_DISTANCE/self.LINEAR_VELOCITY
+                time  = interpolated_distance/self.LINEAR_VELOCITY
             
-            interpolated_pose = self.interpolate_pose(current_pose, target_pose, step/step_number)
     
             error_code = valid_pose(*interpolated_pose) 
             if error_code != ValidErrorCode.VALID:
@@ -222,7 +224,7 @@ class kinematicManager:
                 abs(tmp[i] - previous_angles[i]) / time
                 for i in range(6)
             ]
-            tcp_speed = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))/time
+            tcp_speed = interpolated_distance/time
 
             forward_path.append((time, tmp, tcp_speed))
             velocity_profile.append(tuple( [tcp_speed] + angular_speeds))
