@@ -7,6 +7,7 @@ from IK_TAB import IK_TAB
 from FK_TAB import FK_TAB
 from VELOCITY_TAB import VELOCITY_TAB
 from kinematicManager import kinematicManager
+from USART_TAB import USART_TAB
 
 import logging
 
@@ -27,11 +28,13 @@ class MainWindow(QtWidgets.QSplitter):
         self.ik_tab = IK_TAB()
         self.fk_tab = FK_TAB()
         self.velocity_tab = VELOCITY_TAB()
+        self.usart_tab = USART_TAB()
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self.ik_tab, "IK control")
         self.tabs.addTab(self.fk_tab, "FK control")
         self.tabs.addTab(self.velocity_tab, "Velocity chart")
+        self.tabs.addTab(self.usart_tab, "USART monitor")
         self.addWidget(self.tabs)
 
         self.setSizes([340, 160])

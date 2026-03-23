@@ -197,13 +197,16 @@ class kinematicManager:
             interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
 
             if step<= speed_up_steps:
+                logger.debug("acceleration phase")
                 time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
             elif step>= step_number - speed_up_steps:
+                logger.debug("deceleration phase")
                 remaining_steps = step_number - step + 1
                 time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
             elif step>speed_up_steps and step<(step_number - speed_up_steps):
+                logger.debug("constant phase")
                 time  = interpolated_distance/self.LINEAR_VELOCITY
             
     
