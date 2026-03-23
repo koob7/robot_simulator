@@ -10,9 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class kinematicManager:
-    def __init__(self, ik_tab, fk_tab):
+    def __init__(self, ik_tab, fk_tab, velocity_tab):
         self.ik_tab = ik_tab
         self.fk_tab = fk_tab
+        self.velocity_tab = velocity_tab
         
         #we handle 3 robots with idx
         self.ROBOT_FK = 0 #solid color for forward kinematics simulation
@@ -49,6 +50,7 @@ class kinematicManager:
 
         self.path = []
         self.path_steps = 0
+        self.current_step_index = 0
         self.simulation_timer = QtCore.QTimer()
         self.simulation_timer.timeout.connect(self.animate_movement)
 
@@ -104,6 +106,9 @@ class kinematicManager:
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
         self.simulation_timer.setInterval(int(step_time * 1000))
         self.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
+
+        self.velocity_tab.update_progress_marker(self.current_step_index)
+        self.current_step_index += 1
 
 
     def fk_released_callback(self, _value=None):
@@ -176,7 +181,9 @@ class kinematicManager:
         step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)
 
         forward_path = []
+        velocity_profile = []
         previous_angles = current_angles
+        previous_pose = current_pose
 
         speed_up_distance = self.LINEAR_VELOCITY**2/(2*self.LINERAR_SPEED_UP_VELOCITY) #distance needed to reach target velocity with defined acceleration
         speed_up_steps = math.ceil(speed_up_distance/self.SINGLE_STEP_DISTANCE) #number of steps needed to reach target velocity with defined acceleration
@@ -211,12 +218,23 @@ class kinematicManager:
 
             time*= self.valid_max_angular_speed(previous_angles, tmp, time)
 
-            forward_path.append((time, tmp, self.SINGLE_STEP_DISTANCE/time))
+            angular_speeds = [
+                abs(tmp[i] - previous_angles[i]) / time
+                for i in range(6)
+            ]
+            tcp_speed = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))/time
+
+            forward_path.append((time, tmp, tcp_speed))
+            velocity_profile.append(tuple( [tcp_speed] + angular_speeds))
             previous_angles = tmp
-                
+            previous_pose = interpolated_pose                
 
         self.path  = forward_path
         self.path_steps = step_number
+        self.current_step_index = 0
+
+        self.velocity_tab.draw_velocity_profiles(velocity_profile)
+        self.velocity_tab.update_progress_marker(0)
 
         self.simulation_timer.start()
         self.animate_movement()

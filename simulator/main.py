@@ -5,6 +5,7 @@ from Wrapper import Wrapper
 from RobotViewport import RobotViewport
 from IK_TAB import IK_TAB
 from FK_TAB import FK_TAB
+from VELOCITY_TAB import VELOCITY_TAB
 from kinematicManager import kinematicManager
 
 import logging
@@ -25,10 +26,12 @@ class MainWindow(QtWidgets.QSplitter):
 
         self.ik_tab = IK_TAB()
         self.fk_tab = FK_TAB()
+        self.velocity_tab = VELOCITY_TAB()
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self.ik_tab, "IK control")
         self.tabs.addTab(self.fk_tab, "FK control")
+        self.tabs.addTab(self.velocity_tab, "Velocity chart")
         self.addWidget(self.tabs)
 
         self.setSizes([340, 160])
@@ -43,7 +46,7 @@ if __name__ == "__main__":
     window = MainWindow()
     window.show()
 
-    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab)
+    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab)
     window.ik_tab.link_ik_changed_callback(kinematic_manager.ik_changed_callback)
     window.ik_tab.link_ik_released_callback(kinematic_manager.ik_released_callback)
 
