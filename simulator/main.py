@@ -16,6 +16,42 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s"
 )
 
+class ButtonTabWidget(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.widgets = {}
+        self.active_widgets = {}
+
+        self.main_layout = QtWidgets.QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.button_layout = QtWidgets.QHBoxLayout()
+        self.main_layout.addLayout(self.button_layout)
+
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self.splitter.minimumHeight = 200
+        self.main_layout.addWidget(self.splitter)
+
+    def add_tab(self, widget: QtWidgets.QWidget, name: str):
+        self.widgets[name] = widget
+        btn = QtWidgets.QPushButton(name)
+        btn.clicked.connect(lambda checked=False, n=name: self.toggle_tab(n))
+        self.button_layout.addWidget(btn)
+
+    def toggle_tab(self, name: str):
+        widget = self.widgets[name]
+        if widget in self.active_widgets:
+            self.active_widgets.pop(widget)
+            widget.setParent(None)
+        else:
+            self.active_widgets[widget] = True
+            self.splitter.addWidget(widget)
+        
+        count = self.splitter.count()
+        self.splitter.setSizes([self.splitter.width() // count] * count)
+            
+
 class MainWindow(QtWidgets.QSplitter):
     def __init__(self):
         super().__init__(QtCore.Qt.Orientation.Vertical)
@@ -30,11 +66,11 @@ class MainWindow(QtWidgets.QSplitter):
         self.velocity_tab = VELOCITY_TAB()
         self.usart_tab = USART_TAB()
 
-        self.tabs = QtWidgets.QTabWidget()
-        self.tabs.addTab(self.ik_tab, "IK control")
-        self.tabs.addTab(self.fk_tab, "FK control")
-        self.tabs.addTab(self.velocity_tab, "Velocity chart")
-        self.tabs.addTab(self.usart_tab, "USART monitor")
+        self.tabs = ButtonTabWidget()
+        self.tabs.add_tab(self.ik_tab, "IK control")
+        self.tabs.add_tab(self.fk_tab, "FK control")
+        self.tabs.add_tab(self.velocity_tab, "Velocity chart")
+        self.tabs.add_tab(self.usart_tab, "USART monitor")
         self.addWidget(self.tabs)
 
         self.setSizes([340, 160])

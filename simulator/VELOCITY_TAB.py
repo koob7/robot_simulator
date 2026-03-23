@@ -12,6 +12,7 @@ class VelocityChartWidget(QtWidgets.QWidget):
 		self._static_cache = None
 		self._cache_size = QtCore.QSize()
 		self.setMinimumHeight(60)
+		self.setMinimumWidth(60)
 
 	def set_series(self, values):
 		self.values = list(values)
