@@ -8,6 +8,7 @@ from FK_TAB import FK_TAB
 from VELOCITY_TAB import VELOCITY_TAB
 from kinematicManager import kinematicManager
 from USART_TAB import USART_TAB
+from programSimulation import ProgramSimulation
 
 import logging
 
@@ -33,11 +34,13 @@ class ButtonTabWidget(QtWidgets.QWidget):
         self.splitter.minimumHeight = 200
         self.main_layout.addWidget(self.splitter)
 
-    def add_tab(self, widget: QtWidgets.QWidget, name: str):
+    def add_tab(self, widget: QtWidgets.QWidget, name: str, default_active=False):
         self.widgets[name] = widget
         btn = QtWidgets.QPushButton(name)
         btn.clicked.connect(lambda checked=False, n=name: self.toggle_tab(n))
         self.button_layout.addWidget(btn)
+        if default_active:
+            self.toggle_tab(name)
 
     def toggle_tab(self, name: str):
         widget = self.widgets[name]
@@ -65,12 +68,14 @@ class MainWindow(QtWidgets.QSplitter):
         self.fk_tab = FK_TAB()
         self.velocity_tab = VELOCITY_TAB()
         self.usart_tab = USART_TAB()
+        self.program_simulation_tab = ProgramSimulation(self.ik_tab)
 
         self.tabs = ButtonTabWidget()
-        self.tabs.add_tab(self.ik_tab, "IK control")
+        self.tabs.add_tab(self.ik_tab, "IK control", default_active=True)
         self.tabs.add_tab(self.fk_tab, "FK control")
-        self.tabs.add_tab(self.velocity_tab, "Velocity chart")
+        self.tabs.add_tab(self.velocity_tab, "Velocity chart", default_active=True)
         self.tabs.add_tab(self.usart_tab, "USART monitor")
+        self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")
         self.addWidget(self.tabs)
 
         self.setSizes([340, 160])
