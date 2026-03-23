@@ -68,7 +68,7 @@ class MainWindow(QtWidgets.QSplitter):
         self.fk_tab = FK_TAB()
         self.velocity_tab = VELOCITY_TAB()
         self.usart_tab = USART_TAB()
-        self.program_simulation_tab = ProgramSimulation(self.ik_tab)
+        self.program_simulation_tab = ProgramSimulation(self.ik_tab, self.robot_viewport)
 
         self.tabs = ButtonTabWidget()
         self.tabs.add_tab(self.ik_tab, "IK control", default_active=True)
@@ -90,13 +90,13 @@ if __name__ == "__main__":
     window = MainWindow()
     window.show()
 
-    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab)
+    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab, window.robot_viewport)
     window.ik_tab.link_ik_changed_callback(kinematic_manager.ik_changed_callback)
     window.ik_tab.link_ik_released_callback(kinematic_manager.ik_released_callback)
 
     window.fk_tab.link_fk_changed_callback(kinematic_manager.fk_changed_callback)
     window.fk_tab.link_fk_released_callback(kinematic_manager.fk_released_callback)
 
-    kinematic_manager.connect_status_changed_callback(window.robot_viewport.status_changed_callback)
+    window.program_simulation_tab.connect_to_kinematic_manager(kinematic_manager)
 
     sys.exit(app.exec())

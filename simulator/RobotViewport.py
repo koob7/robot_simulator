@@ -1,8 +1,17 @@
 from PySide6 import QtCore, QtWidgets, QtGui
+from PySide6.QtWidgets import QComboBox
 import time
 import math
 
 from Wrapper import Wrapper
+
+import enum
+
+
+class MovementType(enum.Enum):
+    LINEAR = 0
+    PTP = 1
+
 
 class RobotViewport(QtWidgets.QWidget):
     def __init__(self):
@@ -36,6 +45,14 @@ class RobotViewport(QtWidgets.QWidget):
         self.homeButton.raise_()
         self.homeButton.clicked.connect(self.resetView)
 
+
+        self.movement_type_combo = QComboBox(self)
+        self.movement_type_combo.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
+        self.movement_type_combo.addItem("Linear", MovementType.LINEAR)
+        self.movement_type_combo.addItem("PTP", MovementType.PTP)
+        self.position_movement_type_combo()
+        self.movement_type_combo.raise_()
+
         self.status_label = QtWidgets.QLabel(self)
         self.status_label.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
         self.status_label.setStyleSheet(
@@ -53,6 +70,8 @@ class RobotViewport(QtWidgets.QWidget):
 
         self.resetView()
 
+    def get_current_movement_type(self):
+        return self.movement_type_combo.currentData()
 
     def resetView(self):
         self.actual_x = 44
@@ -163,6 +182,8 @@ class RobotViewport(QtWidgets.QWidget):
         self.homeButton.raise_()
         self.position_status_label()
         self.status_label.raise_()
+        self.position_movement_type_combo()
+        self.movement_type_combo.raise_()
         if self._initialized:
             self.wrapper.CalcProjectionMatrix(max(1, event.size().width()), max(1, event.size().height()))
 
@@ -170,6 +191,11 @@ class RobotViewport(QtWidgets.QWidget):
         self.status_label.adjustSize()
         x = max(10, self.width() - self.status_label.width() - 10)
         self.status_label.move(x, 10)
+
+    def position_movement_type_combo(self):
+        self.movement_type_combo.adjustSize()
+        x = max(10, self.width() - self.movement_type_combo.width() - 10)
+        self.movement_type_combo.move(x, 50)
 
     def updateCamera(self):
         if self._initialized:

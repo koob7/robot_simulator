@@ -6,15 +6,18 @@ from PySide6 import QtCore
 import logging
 import math
 
+from RobotViewport import MovementType
+
 logger = logging.getLogger(__name__)
 
 
 class kinematicManager:
-    def __init__(self, ik_tab, fk_tab, velocity_tab):
+    def __init__(self, ik_tab, fk_tab, velocity_tab, robot_viewport):
         self.ik_tab = ik_tab
         self.fk_tab = fk_tab
         self.velocity_tab = velocity_tab
-        
+        self.robot_viewport = robot_viewport
+
         #we handle 3 robots with idx
         self.ROBOT_FK = 0 #solid color for forward kinematics simulation
         self.ROBOT_IK = 1 #solid color for inverse kinematics simulation
@@ -94,22 +97,28 @@ class kinematicManager:
         logger.debug(f"IK released target pose: {target_pose}")
 
         #self._plan_linear_pose_motion(target_pose)
-        self.motion_planner(target_pose)
+        self.plan_motion(target_pose)
 
     def animate_movement(self):
         if not self.path:
             self.simulation_timer.stop()
-            self.status_changed_callback("Simulation completed")
+            self.robot_viewport.status_changed_callback("Simulation completed")
+            if self.animation_end_callback:
+                self.animation_end_callback()
             return
         
         step_time, angles, velocity = self.path.pop(0)
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
         self.simulation_timer.setInterval(int(step_time * 1000))
-        self.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
+        self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
 
         self.velocity_tab.update_progress_marker(self.current_step_index)
         self.current_step_index += 1
 
+    def abort_motion(self):
+        self.simulation_timer.stop()
+        self.path = []
+        self.robot_viewport.status_changed_callback("Motion aborted")
 
     def fk_released_callback(self, _value=None):
         target_angles = self.fk_tab.get_values()
@@ -123,11 +132,7 @@ class kinematicManager:
         )
         logger.debug(f"FK released target pose (from FK): {target_pose}")
 
-        self.motion_planner(target_pose)
-
-    def connect_status_changed_callback(self, callback):
-        self.status_changed_callback = callback
-        callback("Connected to simulator")
+        self.plan_motion(target_pose)
 
     def interpolate_pose(self, pose1, pose2, t):
         return tuple(
@@ -155,8 +160,20 @@ class kinematicManager:
                     max_overspeed = angular_speed/self.max_motors_angle_speed[i]
         return max_overspeed
 
+    def plan_motion(self, target_pose, callback=None):
+        if self.robot_viewport.get_current_movement_type() == MovementType.LINEAR:
+            self.plan_linear_motion(target_pose)
+        elif self.robot_viewport.get_current_movement_type() == MovementType.PTP:
+            self.plan_ptp_motion(target_pose)
 
-    def motion_planner (self, target_pose):
+        self.animation_end_callback = callback
+
+    
+    def plan_ptp_motion(self, target_pose):
+        pass
+
+
+    def plan_linear_motion (self, target_pose):
         current_angles = (
             self.wrapper.actual_angle_0[self.ROBOT_IK],
             self.wrapper.actual_angle_1[self.ROBOT_IK],
@@ -213,7 +230,7 @@ class kinematicManager:
             error_code = valid_pose(*interpolated_pose) 
             if error_code != ValidErrorCode.VALID:
                 logger.debug(f"Invalid pose at step {step}, skipping movement")
-                self.status_changed_callback(error_code.text())
+                self.robot_viewport.status_changed_callback(error_code.text())
                 self.simulation_timer.stop()
                 self.path = []
                 return

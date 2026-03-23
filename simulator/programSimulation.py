@@ -1,12 +1,6 @@
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtWidgets import QComboBox
-import enum
-
-
-class MovementType(enum.Enum):
-    LINEAR = 0
-    PTP = 1
-
+from RobotViewport import MovementType
 
 class Command:
     def __init__(self, movement_type: MovementType, x, y, z, angle_0, angle_1, angle_2, speed, acceleration):
@@ -139,11 +133,12 @@ class EditPopup(QtWidgets.QDialog):
 
 
 class ProgramSimulation(QtWidgets.QWidget):
-    def __init__(self, ik_tab):
+    def __init__(self, ik_tab, RobotViewport):
         super().__init__()
         layout = QtWidgets.QVBoxLayout(self)
 
         self.ik_tab = ik_tab
+        self.RobotViewport = RobotViewport
 
         self.open_file_button = QtWidgets.QPushButton("Open File")
         self.open_file_button.clicked.connect(self.open_file)
@@ -169,10 +164,6 @@ class ProgramSimulation(QtWidgets.QWidget):
         layout.addLayout(horizontal_layout)
 
 
-        self.movement_type_combo = QComboBox()
-        self.movement_type_combo.addItem("Linear", MovementType.LINEAR)
-        self.movement_type_combo.addItem("PTP", MovementType.PTP)
-
         self.speed_input = QtWidgets.QSpinBox()
         self.speed_input.setRange(10, 100)
         self.speed_input.setValue(50)
@@ -182,8 +173,6 @@ class ProgramSimulation(QtWidgets.QWidget):
         self.acceleration_input.setValue(50)
 
         horizontal_layout2 = QtWidgets.QHBoxLayout()
-        horizontal_layout2.addWidget(QtWidgets.QLabel("Movement type:"))
-        horizontal_layout2.addWidget(self.movement_type_combo)
         horizontal_layout2.addWidget(QtWidgets.QLabel("Speed:"))
         horizontal_layout2.addWidget(self.speed_input)
         horizontal_layout2.addWidget(QtWidgets.QLabel("Acceleration:"))
@@ -218,6 +207,9 @@ class ProgramSimulation(QtWidgets.QWidget):
         self.command_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         layout.addWidget(self.command_list)
 
+    def connect_to_kinematic_manager(self, kinematic_manager):
+        self.kinematic_manager = kinematic_manager
+
     def open_file(self):
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
@@ -248,7 +240,7 @@ class ProgramSimulation(QtWidgets.QWidget):
             self.command_list.addItem(str(cmd))
 
     def handle_add(self):
-        movement_type = self.movement_type_combo.currentData()
+        movement_type = self.RobotViewport.get_current_movement_type()
         speed = self.speed_input.value()
         acceleration = self.acceleration_input.value()
         position = self.ik_tab.get_values()
