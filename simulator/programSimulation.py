@@ -245,6 +245,14 @@ class ProgramSimulation(QtWidgets.QWidget):
         acceleration = self.acceleration_input.value()
         position = self.ik_tab.get_values()
         command = Command(movement_type, *position, speed, acceleration)
+
+        selected_item = self.command_list.currentRow()
+        if selected_item != -1:
+            self.commands.insert(selected_item, command)
+            self.command_list.insertItem(selected_item, str(command))
+            self.command_list.setCurrentRow(selected_item)
+            return
+
         self.command_list.addItem(str(command))
         self.commands.append(command)
         
@@ -293,13 +301,53 @@ class ProgramSimulation(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Save file", f"Failed to save file:\n{exc}")
 
     def handle_back(self):
-        pass
+        if self.command_list.currentRow() != -1:
+            self.current_command_index = self.command_list.currentRow()
+        else:
+            self.current_command_index = 0
+
+        self.direction_factor = -1
+        self.move_robot_to_commands(self.current_command_index)
+
 
     def handle_stop(self):
-        pass
+        self.kinematic_manager.abort_motion()
+
+    def handle_next(self):
+        if self.current_command_index is None:
+            return 
+        if self.direction_factor == 1 and self.current_command_index < len(self.commands) - 1:
+            self.current_command_index += self.direction_factor
+
+        elif self.direction_factor == -1 and self.current_command_index > 0:
+            self.current_command_index += self.direction_factor
+
+        self.move_robot_to_commands(self.current_command_index)
 
     def handle_play(self):
-        pass
+        if self.command_list.currentRow() != -1:
+            self.current_command_index = self.command_list.currentRow()
+        else:
+            self.current_command_index = 0
+
+        self.direction_factor = 1
+        self.move_robot_to_commands(self.current_command_index)
+
+    def move_robot_to_commands(self, index):
+        self.command_list.setCurrentRow(index)
+        x, y, z = self.commands[index].x, self.commands[index].y, self.commands[index].z
+        angle_0, angle_1, angle_2 = self.commands[index].angle_0, self.commands[index].angle_1, self.commands[index].angle_2
+
+        position_touple = (x, y, z, angle_0, angle_1, angle_2)
+
+        speed = self.commands[index].speed
+        acceleration = self.commands[index].acceleration
+
+        move_type = self.commands[index].movement_type
+
+        self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
+
+        
 
 
 

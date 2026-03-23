@@ -97,7 +97,7 @@ class kinematicManager:
         logger.debug(f"IK released target pose: {target_pose}")
 
         #self._plan_linear_pose_motion(target_pose)
-        self.plan_motion(target_pose)
+        self.plan_motion(target_pose, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
 
     def animate_movement(self):
         if not self.path:
@@ -132,7 +132,7 @@ class kinematicManager:
         )
         logger.debug(f"FK released target pose (from FK): {target_pose}")
 
-        self.plan_motion(target_pose)
+        self.plan_motion(target_pose, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
 
     def interpolate_pose(self, pose1, pose2, t):
         return tuple(
@@ -160,20 +160,41 @@ class kinematicManager:
                     max_overspeed = angular_speed/self.max_motors_angle_speed[i]
         return max_overspeed
 
-    def plan_motion(self, target_pose, callback=None):
-        if self.robot_viewport.get_current_movement_type() == MovementType.LINEAR:
-            self.plan_linear_motion(target_pose)
-        elif self.robot_viewport.get_current_movement_type() == MovementType.PTP:
-            self.plan_ptp_motion(target_pose)
+    def plan_motion(self, target_pose, speed, acceleration, movement: MovementType = None, set_EDGE_ROBOT = False, callback=None):
+        if valid_pose(*target_pose) not in self.acceptable_simulated_errors:
+                logger.debug("Invalid target pose, skipping IK calculation")
+                return
+
+        if set_EDGE_ROBOT:
+            ik_result = calculate_ik(*target_pose)
+            self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
+            self.ik_tab.set_values(int(target_pose[0]), int(target_pose[1]), int(target_pose[2]), int(target_pose[3]), int(target_pose[4]), int(target_pose[5]))
+
+            #check calculated ik result with fk
+            fk_result = calculate_fk(*ik_result)
+            eval_ik_result = calculate_ik(*fk_result)
+
+            self.wrapper.rotateRobot(self.ROBOT_FK, *eval_ik_result)
+            self.fk_tab.set_values(int(eval_ik_result[0]), int(eval_ik_result[1]), int(eval_ik_result[2]), int(eval_ik_result[3]), int(eval_ik_result[4]), int(eval_ik_result[5]))
+
+
+
+
+        if movement is None:
+            movement = self.robot_viewport.get_current_movement_type()
+        if movement == MovementType.LINEAR:
+            self.plan_linear_motion(target_pose, speed, acceleration)
+        elif movement == MovementType.PTP:
+            self.plan_ptp_motion(target_pose, speed, acceleration)
 
         self.animation_end_callback = callback
 
     
-    def plan_ptp_motion(self, target_pose):
+    def plan_ptp_motion(self, target_pose, speed , acceleration):
         pass
 
 
-    def plan_linear_motion (self, target_pose):
+    def plan_linear_motion (self, target_pose, speed , acceleration):
         current_angles = (
             self.wrapper.actual_angle_0[self.ROBOT_IK],
             self.wrapper.actual_angle_1[self.ROBOT_IK],
@@ -202,7 +223,7 @@ class kinematicManager:
         previous_angles = current_angles
         previous_pose = current_pose
 
-        speed_up_distance = self.LINEAR_VELOCITY**2/(2*self.LINERAR_SPEED_UP_VELOCITY) #distance needed to reach target velocity with defined acceleration
+        speed_up_distance = speed**2/(2*acceleration) #distance needed to reach target velocity with defined acceleration
         speed_up_steps = math.ceil(speed_up_distance/self.SINGLE_STEP_DISTANCE) #number of steps needed to reach target velocity with defined acceleration
 
         if (speed_up_steps>step_number):
@@ -215,16 +236,16 @@ class kinematicManager:
 
             if step<= speed_up_steps:
                 logger.debug("acceleration phase")
-                time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
+                time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/acceleration) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/acceleration)
 
             elif step>= step_number - speed_up_steps:
                 logger.debug("deceleration phase")
                 remaining_steps = step_number - step + 1
-                time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
+                time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/acceleration) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/acceleration)
 
             elif step>speed_up_steps and step<(step_number - speed_up_steps):
                 logger.debug("constant phase")
-                time  = interpolated_distance/self.LINEAR_VELOCITY
+                time  = interpolated_distance/speed
             
     
             error_code = valid_pose(*interpolated_pose) 
