@@ -34,6 +34,8 @@ class kinematicManager:
         self.wrapper.moveRobot(self.ROBOT_IK, 0, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_EDGES, 0, 0, 0)
 
+        self.acceptable_simulated_errors = [ValidErrorCode.VALID, ValidErrorCode.WRONG_ANGLES, ValidErrorCode.TARGET_POSE_TOO_CLOSE, ValidErrorCode.WRIST_POSE_TOO_CLOSE]
+
 
         self.path = []
         self.path_steps = 0
@@ -43,6 +45,10 @@ class kinematicManager:
     def ik_changed_callback(self, _value=None):
         user_position = self.ik_tab.get_values()
         logger.debug(f"User input IK: {user_position}")
+
+        if valid_pose(*user_position) not in self.acceptable_simulated_errors:
+            logger.debug("Invalid target pose, skipping IK calculation")
+            return
 
         ik_result = calculate_ik(*user_position)
         self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
@@ -58,10 +64,14 @@ class kinematicManager:
         user_angles = self.fk_tab.get_values()
         logger.debug(f"User input FK: {user_angles}")
 
+        fk_result = calculate_fk(*user_angles)
+        if valid_pose(*fk_result) not in self.acceptable_simulated_errors:
+            logger.debug("Invalid target pose from FK, skipping movement")
+            return
+
         self.wrapper.rotateRobot(self.ROBOT_FK, *user_angles)
 
         #check calculated fk result with ik
-        fk_result = calculate_fk(*user_angles)
         ik_result =  calculate_ik(*fk_result)
 
         self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
@@ -77,19 +87,13 @@ class kinematicManager:
     def animate_movement(self):
         if not self.path:
             self.simulation_timer.stop()
-            self.velocity_changed_callback(0)
-            return
-
-        if self.path_steps == 0:
-            self.simulation_timer.stop()
-            self.velocity_changed_callback(0)
+            self.status_changed_callback("Simulation completed")
             return
         
         step_time, angles, velocity = self.path.pop(0)
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
         self.simulation_timer.setInterval(int(step_time * 1000))
-        self.velocity_changed_callback(velocity)
-        self.path_steps -= 1
+        self.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
 
 
     def fk_released_callback(self, _value=None):
@@ -106,10 +110,9 @@ class kinematicManager:
 
         self.motion_planner(target_pose)
 
-    def connect_velocity_changed_callback(self, callback):
-        self.velocity_changed_callback = callback
-        callback(0)
-
+    def connect_status_changed_callback(self, callback):
+        self.status_changed_callback = callback
+        callback("Connected to simulator")
 
     def interpolate_pose(self, pose1, pose2, t):
         return tuple(
@@ -174,19 +177,24 @@ class kinematicManager:
         for step in range(1, step_number+1):
 
             if step<= speed_up_steps:
-                logger.debug("Przyspieszanie")
                 time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
             elif step>= step_number - speed_up_steps:
-                logger.debug("Hamowanie")
                 remaining_steps = step_number - step + 1
                 time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/self.LINERAR_SPEED_UP_VELOCITY)
 
             elif step>speed_up_steps and step<(step_number - speed_up_steps):
-                logger.debug("Stała prędkość")
                 time  = self.SINGLE_STEP_DISTANCE/self.LINEAR_VELOCITY
-               
-            tmp =  calculate_ik(*self.interpolate_pose(current_pose, target_pose, step/step_number))
+            
+            interpolated_pose = self.interpolate_pose(current_pose, target_pose, step/step_number)
+    
+            error_code = valid_pose(*interpolated_pose) 
+            if error_code != ValidErrorCode.VALID:
+                logger.debug(f"Invalid pose at step {step}, skipping movement")
+                self.status_changed_callback(error_code.text())
+                return
+
+            tmp =  calculate_ik(*interpolated_pose)
             tmp = self.unwrap_angles(tmp, previous_angles)    
 
             time*= self.valid_max_angular_speed(previous_angles, tmp, time)

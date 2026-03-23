@@ -19,7 +19,6 @@ class RobotViewport(QtWidgets.QWidget):
         self.render_timer.timeout.connect(self.render_frame)
 
         self.speed = 50.0
-        self.velocity = 0.0
         self.previous_time = time.monotonic()
         self.mouse_sensitivity = 0.003
         self.max_pitch = 1.45
@@ -37,9 +36,9 @@ class RobotViewport(QtWidgets.QWidget):
         self.homeButton.raise_()
         self.homeButton.clicked.connect(self.resetView)
 
-        self.speedLabel = QtWidgets.QLabel(self)
-        self.speedLabel.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
-        self.speedLabel.setStyleSheet(
+        self.status_label = QtWidgets.QLabel(self)
+        self.status_label.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
+        self.status_label.setStyleSheet(
             "QLabel {"
             "color: white;"
             "background-color: rgba(0, 0, 0, 140);"
@@ -47,8 +46,9 @@ class RobotViewport(QtWidgets.QWidget):
             "border-radius: 4px;"
             "}"
         )
-        self.update_speed_label()
-        self.speedLabel.raise_()
+
+        self.status_changed_callback("Welcome")
+        self.status_label.raise_()
 
 
         self.resetView()
@@ -161,19 +161,15 @@ class RobotViewport(QtWidgets.QWidget):
         super().resizeEvent(event)
         self.homeButton.move(10, 10)
         self.homeButton.raise_()
-        self.position_speed_label()
-        self.speedLabel.raise_()
+        self.position_status_label()
+        self.status_label.raise_()
         if self._initialized:
             self.wrapper.CalcProjectionMatrix(max(1, event.size().width()), max(1, event.size().height()))
 
-    def update_speed_label(self):
-        self.speedLabel.setText(f"Speed: {self.velocity:.1f}")
-        self.speedLabel.adjustSize()
-        self.position_speed_label()
-
-    def position_speed_label(self):
-        x = max(10, self.width() - self.speedLabel.width() - 10)
-        self.speedLabel.move(x, 10)
+    def position_status_label(self):
+        self.status_label.adjustSize()
+        x = max(10, self.width() - self.status_label.width() - 10)
+        self.status_label.move(x, 10)
 
     def updateCamera(self):
         if self._initialized:
@@ -214,11 +210,11 @@ class RobotViewport(QtWidgets.QWidget):
             if QtCore.Qt.Key.Key_E in self.keys_pressed:
                 self.actual_y -= move
 
-            self.update_speed_label()
+
             self.updateCamera()
 
             self.wrapper.Render()
 
-    def velocity_changed_callback(self, value):
-        self.velocity = value
-        self.update_speed_label()
+    def status_changed_callback(self, value):
+        self.status_label.setText(value)
+        self.position_status_label()

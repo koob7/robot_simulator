@@ -10,7 +10,7 @@ from kinematicManager import kinematicManager
 import logging
 
 logging.basicConfig(
-    level=logging.WARNING,  # INFO / DEBUG / WARNING / ERROR
+    level=logging.INFO,  # DEBUG / INFO / WARNING / ERROR / CRITICAL
     format="%(levelname)s: %(message)s"
 )
 
@@ -50,6 +50,6 @@ if __name__ == "__main__":
     window.fk_tab.link_fk_changed_callback(kinematic_manager.fk_changed_callback)
     window.fk_tab.link_fk_released_callback(kinematic_manager.fk_released_callback)
 
-    kinematic_manager.connect_velocity_changed_callback(window.robot_viewport.velocity_changed_callback)
+    kinematic_manager.connect_status_changed_callback(window.robot_viewport.status_changed_callback)
 
     sys.exit(app.exec())

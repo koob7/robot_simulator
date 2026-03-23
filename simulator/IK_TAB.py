@@ -23,8 +23,8 @@ class IK_TAB(QtWidgets.QWidget):
         labels_pos = ["X", "Y", "Z"]
         for idx in range(self.N_POSITION_SLIDERS):
             self.sliders[idx] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-            self.sliders[idx].setMinimum(-400)
-            self.sliders[idx].setMaximum(400)
+            self.sliders[idx].setMinimum(-630)
+            self.sliders[idx].setMaximum(630)
             self.sliders[idx].setSingleStep(1)
             self.sliders[idx].setPageStep(10)
             self.sliders[idx].setValue(0)

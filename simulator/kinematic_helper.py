@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Tuple
 import math
+import enum
 
 import logging
 
@@ -10,6 +11,11 @@ D1 = 104.0   # mm (d1)
 A2 = 270.0   # mm (a2)
 D4 = 300.0   # mm (d4)
 D6 = 63.4    # mm (d6)
+
+MAX_ROBOT_TILT = A2 + D4 + D6
+MAX_ROBOT_WRIST_TILT = A2 + D4 
+
+ARM_SAFE_DISTANCE_TO_OBJECT = 25.0 # mm (minimalna odległość ramienia od obiektu, aby uniknąć kolizji)
 
 # Wszystkie jednostki w mm, kąty w radianach (do obliczeń)
 ROBOT_DH_PARAMS = [
@@ -197,3 +203,88 @@ def calculate_fk(angle_0: float, angle_1: float, angle_2: float, angle_3: float,
 
         pos = pose_from_transform(tr[5], degrees=True)
         return pos
+
+class ValidErrorCode(enum.Enum):
+    VALID = 0
+    TARGET_POSE_TOO_CLOSE = 1
+    TARGET_POSE_TOO_FAR = 2
+    WRIST_POSE_TOO_CLOSE = 3
+    WRIST_POSE_TOO_FAR = 4
+    WRONG_ANGLES = 5
+
+    def text(self) -> str:
+        if self == ValidErrorCode.VALID:
+            return("Valid")
+        elif self == ValidErrorCode.TARGET_POSE_TOO_CLOSE:
+            return("Target to close")
+        elif self == ValidErrorCode.TARGET_POSE_TOO_FAR:
+            return("Target to far")
+        elif self == ValidErrorCode.WRIST_POSE_TOO_CLOSE:
+            return("Wrist to close")
+        elif self == ValidErrorCode.WRIST_POSE_TOO_FAR:
+            return("Wrist to far")
+        elif self == ValidErrorCode.WRONG_ANGLES:
+            return("Wrong angles")
+
+
+def valid_pose(x, y, z, roll, pitch, yaw) -> ValidErrorCode:
+
+    if math.sqrt(x**2 + y**2) < 62.0 + ARM_SAFE_DISTANCE_TO_OBJECT and z > 0 - ARM_SAFE_DISTANCE_TO_OBJECT and z < 145 + ARM_SAFE_DISTANCE_TO_OBJECT: #nie można wejść do walca przy podstawie
+        return ValidErrorCode.TARGET_POSE_TOO_CLOSE
+
+    validation_z = z - D1
+
+    cuurrent_tilt = math.sqrt(x**2 + y**2 + validation_z**2)
+
+    if cuurrent_tilt > MAX_ROBOT_TILT:
+        return ValidErrorCode.TARGET_POSE_TOO_FAR
+
+    # Konwersja kątów ze stopni na radiany
+    phi = roll*np.pi/180
+    beta = pitch*np.pi/180
+    psi = yaw*np.pi/180
+
+    c_alfa, s_alfa = np.cos(phi), np.sin(phi)
+    c_beta, s_beta = np.cos(beta), np.sin(beta)
+    c_delta, s_delta = np.cos(psi), np.sin(psi)
+
+    em = np.eye(3)
+    P = np.array([
+        [0, 0, 1],
+        [1, 0, 0],
+        [0, 1, 0],
+    ])
+
+
+    #XYZ
+    em[0, 0] = c_beta * c_delta
+    em[0, 1] = -c_beta * s_delta
+    em[0, 2] = s_beta
+
+    em[1, 0] = c_alfa * s_delta + c_delta * s_alfa * s_beta
+    em[1, 1] = c_alfa * c_delta - s_alfa * s_beta * s_delta
+    em[1, 2] = -s_alfa * c_beta
+
+    em[2, 0] = s_alfa * s_delta - c_alfa * c_delta * s_beta
+    em[2, 1] = c_delta * s_alfa + c_alfa * s_beta * s_delta
+    em[2, 2] = c_alfa * c_beta
+
+    # wyrównanie układów współrzędnych względem siebie
+    em = em @ P
+
+    # Pozycja nadgarstka
+    Wx = x - D6 * em[0, 2]
+    Wy = y - D6 * em[1, 2]
+    Wz = z - D6 * em[2, 2]
+    validation_Wz = validation_z - D6 * em[2, 2]
+
+    current_wrist_tilt = math.sqrt( Wx**2 + Wy**2 + validation_Wz**2 )
+
+    if current_wrist_tilt > MAX_ROBOT_WRIST_TILT:
+        return ValidErrorCode.WRIST_POSE_TOO_FAR
+    
+    if math.sqrt(Wx**2 + Wy**2) < 62.0 + ARM_SAFE_DISTANCE_TO_OBJECT and Wz > 0 - ARM_SAFE_DISTANCE_TO_OBJECT and Wz < 145 + ARM_SAFE_DISTANCE_TO_OBJECT: #nie można wejść do walca przy podstawie
+        return ValidErrorCode.WRIST_POSE_TOO_CLOSE
+
+
+    return ValidErrorCode.VALID
