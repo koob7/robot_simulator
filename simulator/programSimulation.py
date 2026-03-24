@@ -2,6 +2,46 @@ from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtWidgets import QComboBox
 from RobotViewport import MovementType
 
+
+COMMAND_INPUT_LIMITS = {
+    "x": (-630, 630, 0.0),
+    "y": (-630, 630, 0.0),
+    "z": (-630, 630, 0.0),
+    "angle_0": (-180, 180, 0.0),
+    "angle_1": (-180, 180, 0.0),
+    "angle_2": (-180, 180, 0.0),
+    "speed": (10, 100, 50),
+    "acceleration": (10, 100, 50),
+}
+
+COMMAND_TABLE_HEADERS = [
+    "Movement",
+    "X",
+    "Y",
+    "Z",
+    "Angle 0",
+    "Angle 1",
+    "Angle 2",
+    "Speed",
+    "Acceleration",
+]
+
+
+def create_double_input(field_name: str) -> QtWidgets.QDoubleSpinBox:
+    min_value, max_value, default_value = COMMAND_INPUT_LIMITS[field_name]
+    input_widget = QtWidgets.QDoubleSpinBox()
+    input_widget.setRange(min_value, max_value)
+    input_widget.setValue(default_value)
+    return input_widget
+
+
+def create_int_input(field_name: str) -> QtWidgets.QSpinBox:
+    min_value, max_value, default_value = COMMAND_INPUT_LIMITS[field_name]
+    input_widget = QtWidgets.QSpinBox()
+    input_widget.setRange(min_value, max_value)
+    input_widget.setValue(default_value)
+    return input_widget
+
 class Command:
     def __init__(self, movement_type: MovementType, x, y, z, angle_0, angle_1, angle_2, speed, acceleration):
         self.movement_type = movement_type
@@ -53,38 +93,25 @@ class EditPopup(QtWidgets.QDialog):
     def __init__(self, parent=None, command: Command = None):
         super().__init__(parent)
         self.setWindowTitle("Edit Command")
+        self.setMinimumWidth(460)
 
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         self.movement_type_combo = QComboBox()
         self.movement_type_combo.addItem("Linear", MovementType.LINEAR)
         self.movement_type_combo.addItem("PTP", MovementType.PTP)
 
-        self.x_input = QtWidgets.QDoubleSpinBox()
-        self.x_input.setRange(-630, 630)
-        self.x_input.setValue(0)
-        self.y_input = QtWidgets.QDoubleSpinBox()
-        self.y_input.setRange(-630, 630)   
-        self.y_input.setValue(0)
-        self.z_input = QtWidgets.QDoubleSpinBox()
-        self.z_input.setRange(-630, 630)
-        self.z_input.setValue(0)
-        self.angle_0_input = QtWidgets.QDoubleSpinBox()
-        self.angle_0_input.setRange(-180, 180)
-        self.angle_0_input.setValue(0)
-        self.angle_1_input = QtWidgets.QDoubleSpinBox()
-        self.angle_1_input.setRange(-180, 180)
-        self.angle_1_input.setValue(0)
-        self.angle_2_input = QtWidgets.QDoubleSpinBox()
-        self.angle_2_input.setRange(-180, 180)
-        self.angle_2_input.setValue(0)
+        self.x_input = create_double_input("x")
+        self.y_input = create_double_input("y")
+        self.z_input = create_double_input("z")
+        self.angle_0_input = create_double_input("angle_0")
+        self.angle_1_input = create_double_input("angle_1")
+        self.angle_2_input = create_double_input("angle_2")
 
-        self.speed_input = QtWidgets.QSpinBox()
-        self.speed_input.setRange(10, 100)
-        self.speed_input.setValue(50)
-        self.acceleration_input = QtWidgets.QSpinBox()
-        self.acceleration_input.setRange(10, 100)
-        self.acceleration_input.setValue(50)
+        self.speed_input = create_int_input("speed")
+        self.acceleration_input = create_int_input("acceleration")
 
         if command:
             self.movement_type_combo.setCurrentIndex(self.movement_type_combo.findData(command.movement_type))
@@ -96,19 +123,29 @@ class EditPopup(QtWidgets.QDialog):
             self.angle_2_input.setValue(command.angle_2)
             self.speed_input.setValue(command.speed)
             self.acceleration_input.setValue(command.acceleration)
-        
 
-        form_layout = QtWidgets.QFormLayout()
-        form_layout.addRow("Movement Type:", self.movement_type_combo)
-        form_layout.addRow("X:", self.x_input)
-        form_layout.addRow("Y:", self.y_input)
-        form_layout.addRow("Z:", self.z_input)
-        form_layout.addRow("Angle 0:", self.angle_0_input)
-        form_layout.addRow("Angle 1:", self.angle_1_input)
-        form_layout.addRow("Angle 2:", self.angle_2_input)
-        form_layout.addRow("Speed:", self.speed_input)
-        form_layout.addRow("Acceleration:", self.acceleration_input)
-        layout.addLayout(form_layout)
+        general_group = QtWidgets.QGroupBox("General")
+        general_layout = QtWidgets.QFormLayout(general_group)
+        general_layout.setContentsMargins(12, 12, 12, 12)
+        general_layout.setHorizontalSpacing(14)
+        general_layout.setVerticalSpacing(8)
+        general_layout.addRow("Movement Type:", self.movement_type_combo)
+        general_layout.addRow("Speed:", self.speed_input)
+        general_layout.addRow("Acceleration:", self.acceleration_input)
+        layout.addWidget(general_group)
+
+        position_group = QtWidgets.QGroupBox("Position")
+        position_layout = QtWidgets.QFormLayout(position_group)
+        position_layout.setContentsMargins(12, 12, 12, 12)
+        position_layout.setHorizontalSpacing(14)
+        position_layout.setVerticalSpacing(8)
+        position_layout.addRow("X:", self.x_input)
+        position_layout.addRow("Y:", self.y_input)
+        position_layout.addRow("Z:", self.z_input)
+        position_layout.addRow("Angle 0:", self.angle_0_input)
+        position_layout.addRow("Angle 1:", self.angle_1_input)
+        position_layout.addRow("Angle 2:", self.angle_2_input)
+        layout.addWidget(position_group)
 
         button_box = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -116,7 +153,12 @@ class EditPopup(QtWidgets.QDialog):
         )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.setContentsMargins(4, 6, 4, 0)
+        button_row.addStretch(1)
+        button_row.addWidget(button_box)
+        layout.addLayout(button_row)
 
     def get_command(self):
         return Command(
@@ -164,13 +206,9 @@ class ProgramSimulation(QtWidgets.QWidget):
         layout.addLayout(horizontal_layout)
 
 
-        self.speed_input = QtWidgets.QSpinBox()
-        self.speed_input.setRange(10, 100)
-        self.speed_input.setValue(50)
+        self.speed_input = create_int_input("speed")
 
-        self.acceleration_input = QtWidgets.QSpinBox()
-        self.acceleration_input.setRange(10, 100)
-        self.acceleration_input.setValue(50)
+        self.acceleration_input = create_int_input("acceleration")
 
         horizontal_layout2 = QtWidgets.QHBoxLayout()
         horizontal_layout2.addWidget(QtWidgets.QLabel("Speed:"))
@@ -203,9 +241,54 @@ class ProgramSimulation(QtWidgets.QWidget):
 
         layout.addLayout(horizontal_layout3)
         self.commands = []
-        self.command_list = QtWidgets.QListWidget()
+        self.command_list = QtWidgets.QTableWidget(0, len(COMMAND_TABLE_HEADERS))
+        self.command_list.setHorizontalHeaderLabels(COMMAND_TABLE_HEADERS)
         self.command_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.command_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.command_list.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.command_list.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.command_list)
+
+    def _movement_label(self, movement_type: MovementType) -> str:
+        if movement_type == MovementType.LINEAR:
+            return "Linear"
+        if movement_type == MovementType.PTP:
+            return "PTP"
+        return str(movement_type)
+
+    def _command_row_values(self, command: Command):
+        return [
+            self._movement_label(command.movement_type),
+            str(command.x),
+            str(command.y),
+            str(command.z),
+            str(command.angle_0),
+            str(command.angle_1),
+            str(command.angle_2),
+            str(command.speed),
+            str(command.acceleration),
+        ]
+
+    def _set_command_row(self, row: int, command: Command):
+        for column, value in enumerate(self._command_row_values(command)):
+            item = QtWidgets.QTableWidgetItem(value)
+            item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.command_list.setItem(row, column, item)
+
+    def _append_command_row(self, command: Command):
+        row = self.command_list.rowCount()
+        self.command_list.insertRow(row)
+        self._set_command_row(row, command)
+
+    def _insert_command_row(self, row: int, command: Command):
+        self.command_list.insertRow(row)
+        self._set_command_row(row, command)
+
+    def _select_row(self, row: int):
+        if row < 0 or row >= self.command_list.rowCount():
+            return
+        self.command_list.setCurrentCell(row, 0)
+        self.command_list.selectRow(row)
 
     def connect_to_kinematic_manager(self, kinematic_manager):
         self.kinematic_manager = kinematic_manager
@@ -235,9 +318,9 @@ class ProgramSimulation(QtWidgets.QWidget):
             return
 
         self.commands = loaded_commands
-        self.command_list.clear()
+        self.command_list.setRowCount(0)
         for cmd in self.commands:
-            self.command_list.addItem(str(cmd))
+            self._append_command_row(cmd)
 
     def handle_add(self):
         movement_type = self.RobotViewport.get_current_movement_type()
@@ -249,38 +332,34 @@ class ProgramSimulation(QtWidgets.QWidget):
         selected_item = self.command_list.currentRow()
         if selected_item != -1:
             self.commands.insert(selected_item, command)
-            self.command_list.insertItem(selected_item, str(command))
-            self.command_list.setCurrentRow(selected_item)
+            self._insert_command_row(selected_item, command)
+            self._select_row(selected_item)
             return
 
-        self.command_list.addItem(str(command))
         self.commands.append(command)
+        self._append_command_row(command)
         
 
     def handle_remove(self):
-        selected_item = self.command_list.currentItem()
-        if selected_item is None:
+        row = self.command_list.currentRow()
+        if row == -1:
             return
 
-        row = self.command_list.row(selected_item)
-        self.command_list.takeItem(row)
+        self.command_list.removeRow(row)
         if 0 <= row < len(self.commands):
             self.commands.pop(row)
 
     def handle_edit(self):
-        selected_items = self.command_list.currentItem()
-        if not selected_items:
-            return
-
-        row = self.command_list.row(selected_items)
+        row = self.command_list.currentRow()
         if not (0 <= row < len(self.commands)):
             return
 
         popup = EditPopup(self, command=self.commands[row])
         if popup.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             command = popup.get_command()
-            selected_items.setText(str(command))
             self.commands[row] = command
+            self._set_command_row(row, command)
+            self._select_row(row)
 
         
     def handle_save(self):
@@ -334,7 +413,7 @@ class ProgramSimulation(QtWidgets.QWidget):
         self.move_robot_to_commands(self.current_command_index)
 
     def move_robot_to_commands(self, index):
-        self.command_list.setCurrentRow(index)
+        self._select_row(index)
         x, y, z = self.commands[index].x, self.commands[index].y, self.commands[index].z
         angle_0, angle_1, angle_2 = self.commands[index].angle_0, self.commands[index].angle_1, self.commands[index].angle_2
 
