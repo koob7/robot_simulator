@@ -1,9 +1,10 @@
 from PySide6 import QtCore, QtWidgets, QtGui
-from PySide6.QtWidgets import QComboBox
+from PySide6.QtCore import QAbstractTableModel 
+from PySide6.QtWidgets import QComboBox, QTableView
 from RobotViewport import MovementType
 
 
-COMMAND_INPUT_LIMITS = {
+COMMAND_INPUT_LIMITS = { # MIN, MAX, DEFAULT
     "x": (-630, 630, 0.0),
     "y": (-630, 630, 0.0),
     "z": (-630, 630, 0.0),
@@ -54,38 +55,32 @@ class Command:
         self.speed = speed
         self.acceleration = acceleration
 
-    def __str__(self):
-        return f"Command(type={self.movement_type}, x={self.x}, y={self.y}, z={self.z}, angle_0={self.angle_0}, angle_1={self.angle_1}, angle_2={self.angle_2}, speed={self.speed}, acceleration={self.acceleration})"
-
     def to_csv_line(self):
         return (
             f"{self.movement_type.value},{self.x},{self.y},{self.z},"
             f"{self.angle_0},{self.angle_1},{self.angle_2},{self.speed},{self.acceleration}"
         )
-    
-    def __restore__(self, line):
+
+    @classmethod
+    def from_csv_line(cls, line):
         try:
             parts = [part.strip() for part in line.split(",")]
             if len(parts) != 9:
                 return None
 
-            self.movement_type = MovementType(int(parts[0]))
-            self.x = float(parts[1])
-            self.y = float(parts[2])
-            self.z = float(parts[3])
-            self.angle_0 = float(parts[4])
-            self.angle_1 = float(parts[5])
-            self.angle_2 = float(parts[6])
-            self.speed = float(parts[7])
-            self.acceleration = float(parts[8])
-            return self
+            return cls(
+                movement_type=MovementType(int(parts[0])),
+                x=float(parts[1]),
+                y=float(parts[2]),
+                z=float(parts[3]),
+                angle_0=float(parts[4]),
+                angle_1=float(parts[5]),
+                angle_2=float(parts[6]),
+                speed=float(parts[7]),
+                acceleration=float(parts[8]),
+            )
         except (ValueError, IndexError):
             return None
-
-    @classmethod
-    def from_csv_line(cls, line):
-        cmd = cls(MovementType.LINEAR, 0, 0, 0, 0, 0, 0, 50, 50)
-        return cmd.__restore__(line)
 
     
 
@@ -174,6 +169,103 @@ class EditPopup(QtWidgets.QDialog):
         )
 
 
+class SimulationSteps(QAbstractTableModel):
+    def __init__(self, commands: list[Command]):
+        super().__init__()
+        self.commands = commands
+        self.headers = COMMAND_TABLE_HEADERS
+
+    def rowCount(self, parent=None):
+        return len(self.commands)
+    
+    def columnCount(self, parent=None):
+        return len(self.headers)
+    
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or role != QtCore.Qt.ItemDataRole.DisplayRole:
+            return None
+        
+        command = self.commands[index.row()]
+        column = index.column()
+
+        if column == 0:
+            if command.movement_type == MovementType.LINEAR:
+                return "LIN"
+            if command.movement_type == MovementType.PTP:
+                return "PTP"
+            return str(command.movement_type)
+        elif column == 1:
+            return command.x
+        elif column == 2:
+            return command.y
+        elif column == 3:
+            return command.z
+        elif column == 4:
+            return command.angle_0
+        elif column == 5:
+            return command.angle_1
+        elif column == 6:
+            return command.angle_2
+        elif column == 7:
+            return command.speed
+        elif column == 8:
+            return command.acceleration
+        
+        return None
+    
+    def headerData(self, section, orientation, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if role != QtCore.Qt.ItemDataRole.DisplayRole:
+            return None
+        
+        if orientation == QtCore.Qt.Orientation.Horizontal:
+            if 0 <= section < len(self.headers):
+                return self.headers[section]
+        
+        return None
+
+    def push_command(self, command: Command):
+        self.beginInsertRows(QtCore.QModelIndex(), len(self.commands), len(self.commands))
+        self.commands.append(command)
+        self.endInsertRows()
+
+    def remove_command(self, index: int):
+        if 0 <= index < len(self.commands):
+            self.beginRemoveRows(QtCore.QModelIndex(), index, index)
+            self.commands.pop(index)
+            self.endRemoveRows()
+
+    def update_command(self, index: int, command: Command):
+        if 0 <= index < len(self.commands):
+            self.commands[index] = command
+            self.dataChanged.emit(self.index(index, 0), self.index(index, len(self.headers) - 1))
+
+    def insert_command(self, index: int, command: Command):
+        if 0 <= index <= len(self.commands):
+            self.beginInsertRows(QtCore.QModelIndex(), index, index)
+            self.commands.insert(index, command)
+            self.endInsertRows()
+
+    def swap_commands(self, index1: int, index2: int):
+        if 0 <= index1 < len(self.commands) and 0 <= index2 < len(self.commands):
+            self.commands[index1], self.commands[index2] = self.commands[index2], self.commands[index1]
+            self.dataChanged.emit(self.index(min(index1, index2), 0), self.index(max(index1, index2), len(self.headers) - 1))
+
+    def clear_commands(self):
+        self.beginResetModel()
+        self.commands.clear()
+        self.endResetModel()
+
+    def get_length(self):
+        return len(self.commands)
+    
+    def get_command(self, index: int) -> Command | None:
+        if 0 <= index < len(self.commands):
+            return self.commands[index]
+        return None
+
+    def get_all_commands(self) -> list[Command]:
+        return self.commands[:]
+
 class ProgramSimulation(QtWidgets.QWidget):
     def __init__(self, ik_tab, RobotViewport):
         super().__init__()
@@ -210,11 +302,19 @@ class ProgramSimulation(QtWidgets.QWidget):
 
         self.acceleration_input = create_int_input("acceleration")
 
+        self.move_up_button = QtWidgets.QPushButton("Move Up")
+        self.move_up_button.clicked.connect(self.handle_move_up)
+
+        self.move_down_button = QtWidgets.QPushButton("Move Down")
+        self.move_down_button.clicked.connect(self.handle_move_down)
+
         horizontal_layout2 = QtWidgets.QHBoxLayout()
         horizontal_layout2.addWidget(QtWidgets.QLabel("Speed:"))
         horizontal_layout2.addWidget(self.speed_input)
         horizontal_layout2.addWidget(QtWidgets.QLabel("Acceleration:"))
         horizontal_layout2.addWidget(self.acceleration_input)
+        horizontal_layout2.addWidget(self.move_up_button)
+        horizontal_layout2.addWidget(self.move_down_button)
         layout.addLayout(horizontal_layout2)
 
         icon = self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay)
@@ -223,7 +323,7 @@ class ProgramSimulation(QtWidgets.QWidget):
         flipped = pixmap.transformed(QtGui.QTransform().scale(-1, 1))  # odbicie poziome
 
         self.back_button = QtWidgets.QPushButton("Back")
-        self.back_button.clicked.connect(self.handle_back)
+        self.back_button.clicked.connect(self.handle_play_back)
         self.back_button.setIcon(QtGui.QIcon(flipped))
 
         self.stop_button = QtWidgets.QPushButton("Stop")
@@ -234,20 +334,24 @@ class ProgramSimulation(QtWidgets.QWidget):
         self.play_button.clicked.connect(self.handle_play)
         self.play_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay))
 
+        self.continous_play_checkbox = QtWidgets.QCheckBox("Continuous play")
+        self.continous_play_checkbox.setChecked(True)
+
         horizontal_layout3 = QtWidgets.QHBoxLayout()
         horizontal_layout3.addWidget(self.back_button)
         horizontal_layout3.addWidget(self.stop_button)
         horizontal_layout3.addWidget(self.play_button)
+        horizontal_layout3.addWidget(self.continous_play_checkbox)
 
         layout.addLayout(horizontal_layout3)
-        self.commands = []
-        self.command_list = QtWidgets.QTableWidget(0, len(COMMAND_TABLE_HEADERS))
-        self.command_list.setHorizontalHeaderLabels(COMMAND_TABLE_HEADERS)
-        self.command_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self.command_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.command_list.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.command_list.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.command_list)
+
+        self.command_view = QTableView()
+        self.command_layout = SimulationSteps([])
+        self.command_view.setModel(self.command_layout)
+        self.command_view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        
+
+        layout.addWidget(self.command_view)
 
     def _movement_label(self, movement_type: MovementType) -> str:
         if movement_type == MovementType.LINEAR:
@@ -255,40 +359,6 @@ class ProgramSimulation(QtWidgets.QWidget):
         if movement_type == MovementType.PTP:
             return "PTP"
         return str(movement_type)
-
-    def _command_row_values(self, command: Command):
-        return [
-            self._movement_label(command.movement_type),
-            str(command.x),
-            str(command.y),
-            str(command.z),
-            str(command.angle_0),
-            str(command.angle_1),
-            str(command.angle_2),
-            str(command.speed),
-            str(command.acceleration),
-        ]
-
-    def _set_command_row(self, row: int, command: Command):
-        for column, value in enumerate(self._command_row_values(command)):
-            item = QtWidgets.QTableWidgetItem(value)
-            item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            self.command_list.setItem(row, column, item)
-
-    def _append_command_row(self, command: Command):
-        row = self.command_list.rowCount()
-        self.command_list.insertRow(row)
-        self._set_command_row(row, command)
-
-    def _insert_command_row(self, row: int, command: Command):
-        self.command_list.insertRow(row)
-        self._set_command_row(row, command)
-
-    def _select_row(self, row: int):
-        if row < 0 or row >= self.command_list.rowCount():
-            return
-        self.command_list.setCurrentCell(row, 0)
-        self.command_list.selectRow(row)
 
     def connect_to_kinematic_manager(self, kinematic_manager):
         self.kinematic_manager = kinematic_manager
@@ -303,7 +373,9 @@ class ProgramSimulation(QtWidgets.QWidget):
         if not file_path:
             return
 
-        loaded_commands = []
+        self.command_view.clearSelection()
+        self.command_view.model().clear_commands()
+
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 for raw_line in f:
@@ -312,15 +384,10 @@ class ProgramSimulation(QtWidgets.QWidget):
                         continue
                     cmd = Command.from_csv_line(line)
                     if cmd is not None:
-                        loaded_commands.append(cmd)
+                        self.command_view.model().push_command(cmd)
         except OSError as exc:
             QtWidgets.QMessageBox.warning(self, "Open file", f"Failed to open file:\n{exc}")
             return
-
-        self.commands = loaded_commands
-        self.command_list.setRowCount(0)
-        for cmd in self.commands:
-            self._append_command_row(cmd)
 
     def handle_add(self):
         movement_type = self.RobotViewport.get_current_movement_type()
@@ -329,37 +396,30 @@ class ProgramSimulation(QtWidgets.QWidget):
         position = self.ik_tab.get_values()
         command = Command(movement_type, *position, speed, acceleration)
 
-        selected_item = self.command_list.currentRow()
+        selected_item = self.command_view.currentIndex().row()
         if selected_item != -1:
-            self.commands.insert(selected_item, command)
-            self._insert_command_row(selected_item, command)
-            self._select_row(selected_item)
+            self.command_view.model().insert_command(selected_item, command)
             return
 
-        self.commands.append(command)
-        self._append_command_row(command)
+        self.command_view.model().push_command(command)
         
 
     def handle_remove(self):
-        row = self.command_list.currentRow()
-        if row == -1:
-            return
+        row = self.command_view.currentIndex().row()
 
-        self.command_list.removeRow(row)
-        if 0 <= row < len(self.commands):
-            self.commands.pop(row)
+        self.command_view.model().remove_command(row)
 
     def handle_edit(self):
-        row = self.command_list.currentRow()
-        if not (0 <= row < len(self.commands)):
-            return
 
-        popup = EditPopup(self, command=self.commands[row])
+        command = self.command_view.model().get_command(self.command_view.currentIndex().row())
+
+        if command is None:
+            return
+        
+        popup = EditPopup(self, command=command)
         if popup.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             command = popup.get_command()
-            self.commands[row] = command
-            self._set_command_row(row, command)
-            self._select_row(row)
+            self.command_view.model().update_command(self.command_view.currentIndex().row(), command)
 
         
     def handle_save(self):
@@ -374,18 +434,27 @@ class ProgramSimulation(QtWidgets.QWidget):
 
         try:
             with open(file_path, "w", encoding="utf-8") as f:
-                for cmd in self.commands:
+                for cmd in self.command_view.model().get_all_commands():
                     f.write(cmd.to_csv_line() + "\n")
         except OSError as exc:
             QtWidgets.QMessageBox.warning(self, "Save file", f"Failed to save file:\n{exc}")
 
-    def handle_back(self):
-        if self.command_list.currentRow() != -1:
-            self.current_command_index = self.command_list.currentRow()
+    def handle_play_back(self):
+        if self.command_view.currentIndex().row() != -1:
+            self.current_command_index = self.command_view.currentIndex().row()
+        else:
+            self.current_command_index = self.command_view.model().get_length() - 1
+
+        self.direction_factor = -1
+        self.move_robot_to_commands(self.current_command_index)
+
+    def handle_play(self):
+        if self.command_view.currentIndex().row() != -1:
+            self.current_command_index = self.command_view.currentIndex().row()
         else:
             self.current_command_index = 0
 
-        self.direction_factor = -1
+        self.direction_factor = 1
         self.move_robot_to_commands(self.current_command_index)
 
 
@@ -395,43 +464,49 @@ class ProgramSimulation(QtWidgets.QWidget):
     def handle_next(self):
         if self.current_command_index is None:
             return 
-        if self.direction_factor == 1 and self.current_command_index < len(self.commands) - 1:
-            self.current_command_index += self.direction_factor
+        
+        if not self.continous_play_checkbox.isChecked():
+            index = self.current_command_index + self.direction_factor
+            if index < 0 or index >= self.command_view.model().get_length():
+                return
+            model_index = self.command_view.model().index(index, 0)
+            self.command_view.setCurrentIndex(model_index)
+            return
+        
+        self.current_command_index += self.direction_factor
 
-        elif self.direction_factor == -1 and self.current_command_index > 0:
-            self.current_command_index += self.direction_factor
-
-        self.move_robot_to_commands(self.current_command_index)
-
-    def handle_play(self):
-        if self.command_list.currentRow() != -1:
-            self.current_command_index = self.command_list.currentRow()
-        else:
-            self.current_command_index = 0
-
-        self.direction_factor = 1
         self.move_robot_to_commands(self.current_command_index)
 
     def move_robot_to_commands(self, index):
-        self._select_row(index)
-        x, y, z = self.commands[index].x, self.commands[index].y, self.commands[index].z
-        angle_0, angle_1, angle_2 = self.commands[index].angle_0, self.commands[index].angle_1, self.commands[index].angle_2
+
+        if index < 0 or index >= self.command_view.model().get_length():
+            return
+
+        model_index = self.command_view.model().index(index, 0)
+        self.command_view.setCurrentIndex(model_index)
+
+        desired_command = self.command_view.model().get_command(index)
+
+        if desired_command is None:
+            return
+        
+
+        x, y, z = desired_command.x, desired_command.y, desired_command.z
+        angle_0, angle_1, angle_2 = desired_command.angle_0, desired_command.angle_1, desired_command.angle_2
 
         position_touple = (x, y, z, angle_0, angle_1, angle_2)
 
-        speed = self.commands[index].speed
-        acceleration = self.commands[index].acceleration
+        speed = desired_command.speed
+        acceleration = desired_command.acceleration
 
-        move_type = self.commands[index].movement_type
+        move_type = desired_command.movement_type
 
         self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
 
-        
+    def handle_move_up(self):
+        current_row = self.command_view.currentIndex().row()
+        self.command_view.model().swap_commands(current_row, current_row - 1)
 
-
-
-
-
-
-
-
+    def handle_move_down(self):
+        current_row = self.command_view.currentIndex().row()
+        self.command_view.model().swap_commands(current_row, current_row + 1)
