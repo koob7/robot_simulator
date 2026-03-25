@@ -12,7 +12,7 @@ class RefreshableComboBox(QComboBox):
         super().showPopup()  # Calls the original QComboBox.showPopup
 
 class SendLineEdit(QtWidgets.QWidget):
-    def __init__(self,  parent=None, send_callback=None):
+    def __init__(self, send_callback,  parent=None):
 
         super().__init__(parent)
         self.layout = QtWidgets.QHBoxLayout(self)
@@ -26,24 +26,23 @@ class SendLineEdit(QtWidgets.QWidget):
         self.layout.addWidget(self.clearButton)
         self.sendButton.clicked.connect(self.send_command)
         self.clearButton.clicked.connect(self.clear_command)
-        self.send_data = send_callback
+        self.send_callback = send_callback
 
     def send_command(self):
         command = self.line_edit.text()
         self.line_edit.clear()
-        self.send_data(command)
+        self.send_callback(command)
 
     def clear_command(self):
         self.line_edit.clear()
 
 
 class USART_TAB(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, usart_interface, parent=None):
         super().__init__()
 
-        self.serial_port = None
-        self.read_thread = None
-        self.stop_thread = threading.Event()
+        self.usart_interface = usart_interface
+        self.usart_interface.connect_received_callback(self.data_received_callback)
 
         self.text_area = QtWidgets.QTextEdit(self)
         self.text_area.setReadOnly(True)
@@ -52,7 +51,7 @@ class USART_TAB(QtWidgets.QWidget):
         self.available_ports_combo.refresh_callback = self.refresh_available_ports
 
         self.baudrate_combo = QComboBox(self)
-        self.baudrate_combo.addItems(["9600", "19200", "38400", "57600", "115200"])
+        self.baudrate_combo.addItems(["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"])
         self.baudrate_combo.setCurrentText("115200")
 
         self.connect_button = QtWidgets.QPushButton("Connect", self)
@@ -64,7 +63,7 @@ class USART_TAB(QtWidgets.QWidget):
         self.clear_button = QtWidgets.QPushButton("Clear", self)
         self.clear_button.clicked.connect(self.text_area.clear)
 
-        self.send_line_edit = SendLineEdit(self, self.send_data)
+        self.send_line_edit = SendLineEdit( send_callback=self.send_data)
 
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -79,16 +78,10 @@ class USART_TAB(QtWidgets.QWidget):
         layout.addWidget(self.send_line_edit)
 
     def send_data(self, data):
-        if self.serial_port and self.serial_port.is_open:
-            try:
-                self.serial_port.write((data + "\n").encode('utf-8'))
-                self.text_area.append(f"{time.strftime('%Y-%m-%d %H:%M:%S')} >> {data}")
-            except serial.SerialException as e:
-                self.text_area.append(f"Error sending data: {e}")
+        if self.usart_interface.send_data(data):
+            self.text_area.append(f"{time.strftime('%Y-%m-%d %H:%M:%S')} >> {data}")
         else:
             self.text_area.append("Serial port is not connected.")
-
-
 
     def refresh_available_ports(self):
         self.available_ports_combo.clear()
@@ -97,39 +90,23 @@ class USART_TAB(QtWidgets.QWidget):
         for port in ports:
             self.available_ports_combo.addItem(port.device + " - " + port.description, port.device)
 
-    def connect_serial(self, port_name, baud_rate=115200):
-        try:
-            self.serial_port = serial.Serial(port_name, baud_rate, timeout=1, write_timeout=1)
-            self.stop_thread.clear()
-            self.read_thread = threading.Thread(target=self.read_from_serial)
-            self.read_thread.start()
-            self.text_area.append(f"Connected to {port_name} at {baud_rate} baud.")
-        except serial.SerialException as e:
-            self.text_area.append(f"Error connecting to serial port: {e}")
-
-    def disconnect_serial(self):
-        if self.serial_port and self.serial_port.is_open:
-            self.stop_thread.set()
-            self.read_thread.join()
-            self.serial_port.close()
-            self.text_area.append("Serial port disconnected.")
-
     def handle_connect(self):
         port_name = self.available_ports_combo.currentData()
         baud_rate = int(self.baudrate_combo.currentText())
-        if port_name:
-            self.connect_serial(port_name, baud_rate)
+
+        result = self.usart_interface.connect(port_name, baud_rate)
+
+        if result == 1:
+            self.text_area.append(f"Connected to {port_name} at {baud_rate} baud.")
+        elif result == 0:
+            self.text_area.append(f"Error connecting to serial port: {port_name}.")
+        elif result == -1:
+            self.text_area.append("Already connected to a serial port.")
 
     def handle_disconnect(self):
-        self.disconnect_serial()
+        if self.usart_interface.disconnect():
+            self.text_area.append("Serial port disconnected.")
 
-    def read_from_serial(self):
-        while not self.stop_thread.is_set():
-            if self.serial_port and self.serial_port.is_open:
-                try:
-                    line = self.serial_port.readline().decode('utf-8').strip()
-                    if line:
-                        self.text_area.append(f"{time.strftime('%Y-%m-%d %H:%M:%S')} << {line}")
-                except serial.SerialException as e:
-                    self.text_area.append(f"Error reading from serial port: {e}")
-                    break
+    def data_received_callback(self, data):
+        self.text_area.append(f"{time.strftime('%Y-%m-%d %H:%M:%S')} << {data}")
+

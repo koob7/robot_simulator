@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class kinematicManager:
-    def __init__(self, ik_tab, fk_tab, velocity_tab, robot_viewport):
+    def __init__(self, ik_tab, fk_tab, velocity_tab, robot_viewport, robot_control):
         self.ik_tab = ik_tab
         self.fk_tab = fk_tab
         self.velocity_tab = velocity_tab
         self.robot_viewport = robot_viewport
+        self.robot_control = robot_control  
 
         #we handle 3 robots with idx
         self.ROBOT_FK = 0 #solid color for forward kinematics simulation

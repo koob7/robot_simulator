@@ -9,6 +9,8 @@ from VELOCITY_TAB import VELOCITY_TAB
 from kinematicManager import kinematicManager
 from USART_TAB import USART_TAB
 from programSimulation import ProgramSimulation
+from usart_control import USARTControl
+from robot_control import RobotControl
 
 import logging
 
@@ -64,10 +66,13 @@ class MainWindow(QtWidgets.QSplitter):
         self.robot_viewport = RobotViewport()
         self.addWidget(self.robot_viewport)
 
+        self.usart_control = USARTControl()
+        self.robot_control = RobotControl(self.usart_control)
+
         self.ik_tab = IK_TAB()
         self.fk_tab = FK_TAB()
         self.velocity_tab = VELOCITY_TAB()
-        self.usart_tab = USART_TAB()
+        self.usart_tab = USART_TAB(usart_interface=self.usart_control)
         self.program_simulation_tab = ProgramSimulation(self.ik_tab, self.robot_viewport)
 
         self.tabs = ButtonTabWidget()
@@ -90,7 +95,7 @@ if __name__ == "__main__":
     window = MainWindow()
     window.show()
 
-    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab, window.robot_viewport)
+    kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab, window.robot_viewport, window.robot_control)
     window.ik_tab.link_ik_changed_callback(kinematic_manager.ik_changed_callback)
     window.ik_tab.link_ik_released_callback(kinematic_manager.ik_released_callback)
 
