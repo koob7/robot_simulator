@@ -34,7 +34,12 @@ class kinematicManager:
         # Stepper motor parameters
         self.LINEAR_VELOCITY = 60.0     # mm/s (target constant linear velocity)
         self.LINERAR_SPEED_UP_VELOCITY = 25.0     # mm/s^2 (velocity during acceleration phase)
+
+        self.ANGLE_SPEED = MAX_ANGULAR_SPEED
+        self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
+
         self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
+        self.SINGLE_STEP_ANGLE = 0.2 # degrees (for simple linear interpolation in joint space)
 
         
         self.wrapper = Wrapper()
@@ -102,7 +107,7 @@ class kinematicManager:
         logger.debug(f"IK released target pose: {target_pose}")
 
         #self._plan_linear_pose_motion(target_pose)
-        self.plan_motion(target_pose, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
+        self.plan_motion(target_pose, movement=MovementType.LINEAR, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
 
     def animate_movement(self):
         if not self.path:
@@ -137,9 +142,9 @@ class kinematicManager:
         )
         logger.debug(f"FK released target pose (from FK): {target_pose}")
 
-        self.plan_motion(target_pose, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
+        self.plan_motion(target_angles, speed=self.ANGLE_SPEED, acceleration=self.ANGLE_ACCELERATION, movement=MovementType.PTP)
 
-    def plan_motion(self, target_pose, speed, acceleration, movement: MovementType = None, set_EDGE_ROBOT = False, callback=None):
+    def plan_motion(self, target_pose, movement: MovementType = None, speed = None, acceleration = None,  set_EDGE_ROBOT = False, callback=None):
         if valid_pose(*target_pose) not in self.acceptable_simulated_errors:
                 logger.debug("Invalid target pose, skipping IK calculation")
                 return
@@ -161,10 +166,18 @@ class kinematicManager:
 
         if movement is None:
             movement = self.robot_viewport.get_current_movement_type()
+
+        if speed is None or acceleration is None:
+            if movement == MovementType.LINEAR:
+                speed = self.LINEAR_VELOCITY
+                acceleration = self.LINERAR_SPEED_UP_VELOCITY
+            elif movement == MovementType.PTP:
+                speed = self.ANGLE_SPEED
+                acceleration = self.ANGLE_ACCELERATION
         if movement == MovementType.LINEAR:
             self.plan_linear_motion(target_pose, speed, acceleration)
         elif movement == MovementType.PTP:
-            self.plan_ptp_motion(target_pose)
+            self.plan_ptp_motion(target_pose, speed, acceleration)
 
         self.animation_end_callback = callback
 
@@ -271,11 +284,9 @@ class kinematicManager:
         self.simulation_timer.start()
         self.animate_movement()
 
-    def plan_ptp_motion(self, target_pose):
-        #We don't need speed - we try to maximalize it with given acceleration and max motor speed
-        #acceleration also doesn't matter - we accelarate witch highes motor accelartion
-        
-        #for here we get target pose as angles
+    def plan_ptp_motion(self, target_pose, speed, acceleration):
+       
+        #for here we get target pose as anglesz
 
         current_angles = (
             self.wrapper.actual_angle_0[self.ROBOT_IK],
@@ -286,9 +297,72 @@ class kinematicManager:
             self.wrapper.actual_angle_5[self.ROBOT_IK],
         )
 
+        target_pose = unwrap_angles(current_angles, target_pose)
+
         diff_angles = [target_pose[i] - current_angles[i] for i in range(6)]
 
-        max_time = [abs(diff_angles[i]) / MAX_MOTOR_ANGLE_SPEED[i] for i in range(6)]
+        max_angle_diff = max(abs(diff) for diff in diff_angles)
 
-        max_time_needed = max(max_time) #time needed to reach target angles with max motor speed for slowest joing
+        step_number = math.ceil(max_angle_diff / self.SINGLE_STEP_ANGLE)
+
+
+        speed_up_angle = speed**2/(2*acceleration) #angle difference needed to reach target velocity with defined acceleration
+        speed_up_steps = math.ceil(speed_up_angle/self.SINGLE_STEP_ANGLE) #number of steps needed to reach target velocity with defined acceleration
+
+
+        forward_path = []
+        velocity_profile = []
+        previous_angles = current_angles
+        previous_pose = calculate_fk(*current_angles)
+
+        if (speed_up_steps>step_number/2):
+            speed_up_steps = math.ceil(step_number/2)
+
+        for step in range(1, step_number+1):
+
+            interpolated_angle = interpolate_pose(current_angles, target_pose, step/step_number)
+            interpolated_pose = calculate_fk(*interpolated_angle)
+            interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
+
+            error_code = valid_pose(*interpolated_pose)
+            if error_code != ValidErrorCode.VALID:
+                logger.info(f"Invalid pose at step {step}, skipping movement")
+                self.simulation_timer.stop()
+                self.path = []
+                return
+
+            if step<= speed_up_steps:
+                logger.debug("acceleration phase")
+                time = math.sqrt((2*step*self.SINGLE_STEP_ANGLE)/acceleration) - math.sqrt((2*(step-1)*self.SINGLE_STEP_ANGLE)/acceleration)
+
+            elif step>= step_number - speed_up_steps:
+                logger.debug("deceleration phase")
+                remaining_steps = step_number - step + 1
+                time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_ANGLE)/acceleration) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_ANGLE)/acceleration)
+
+            elif step>speed_up_steps and step<(step_number - speed_up_steps):
+                logger.debug("constant phase")
+                time  = self.SINGLE_STEP_ANGLE/speed
+
+            tcp_speed = interpolated_distance/time
+            angular_speeds = [
+                abs(interpolated_angle[i] - previous_angles[i]) / time
+                for i in range(6)
+            ]
+
+            forward_path.append((time, interpolated_angle, tcp_speed))
+            velocity_profile.append(tuple( [tcp_speed] + angular_speeds))
+
+            previous_pose = interpolated_pose
+            previous_angles = interpolated_angle
+
+        self.path  = forward_path
+        self.path_steps = step_number
+        self.current_step_index = 0
+
+        self.velocity_tab.draw_velocity_profiles(velocity_profile)
+        self.velocity_tab.update_progress_marker(0)
+
+        self.simulation_timer.start()
+        self.animate_movement()
 

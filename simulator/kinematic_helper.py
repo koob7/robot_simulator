@@ -315,8 +315,8 @@ def valid_pose(x, y, z, roll, pitch, yaw) -> ValidErrorCode:
 
     return ValidErrorCode.VALID
 
-
 def valid_max_angular_speed(angles1, angles2, time):
+
     max_overspeed = 1.0
     for i in range(6):
         angular_speed = abs(angles2[i] - angles1[i]) / time
