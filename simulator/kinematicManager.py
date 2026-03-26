@@ -164,13 +164,9 @@ class kinematicManager:
         if movement == MovementType.LINEAR:
             self.plan_linear_motion(target_pose, speed, acceleration)
         elif movement == MovementType.PTP:
-            self.plan_ptp_motion(target_pose, speed, acceleration)
+            self.plan_ptp_motion(target_pose)
 
         self.animation_end_callback = callback
-
-    
-    def plan_ptp_motion(self, target_pose, speed , acceleration):
-        pass
 
 
     def plan_linear_motion (self, target_pose, speed , acceleration):
@@ -201,11 +197,12 @@ class kinematicManager:
         velocity_profile = []
         previous_angles = current_angles
         previous_pose = current_pose
+        previous_joints_speed = [0.0] * 6
 
         speed_up_distance = speed**2/(2*acceleration) #distance needed to reach target velocity with defined acceleration
         speed_up_steps = math.ceil(speed_up_distance/self.SINGLE_STEP_DISTANCE) #number of steps needed to reach target velocity with defined acceleration
 
-        if (speed_up_steps>step_number):
+        if (speed_up_steps>step_number/2):
             speed_up_steps = math.ceil(step_number/2)
 
         for step in range(1, step_number+1):
@@ -238,18 +235,31 @@ class kinematicManager:
             tmp =  calculate_ik(*interpolated_pose)
             tmp = unwrap_angles(tmp, previous_angles)    
 
-            time*= valid_max_angular_speed(previous_angles, tmp, time)
+            angular_speed_limit = valid_max_angular_speed(previous_angles, tmp, time)
+            time*= angular_speed_limit
 
             angular_speeds = [
                 abs(tmp[i] - previous_angles[i]) / time
                 for i in range(6)
             ]
+
+            previous_joints_speed = angular_speeds      
+
+            angular_acceleration_limit = valid_max_angular_accelaration(previous_joints_speed, angular_speeds, time)
+            time *= angular_acceleration_limit
+
+            angular_speeds = [
+                abs(tmp[i] - previous_angles[i]) / time
+                for i in range(6)
+            ]
+
             tcp_speed = interpolated_distance/time
 
             forward_path.append((time, tmp, tcp_speed))
             velocity_profile.append(tuple( [tcp_speed] + angular_speeds))
             previous_angles = tmp
-            previous_pose = interpolated_pose                
+            previous_pose = interpolated_pose       
+            previous_joints_speed = angular_speeds         
 
         self.path  = forward_path
         self.path_steps = step_number
@@ -261,4 +271,24 @@ class kinematicManager:
         self.simulation_timer.start()
         self.animate_movement()
 
+    def plan_ptp_motion(self, target_pose):
+        #We don't need speed - we try to maximalize it with given acceleration and max motor speed
+        #acceleration also doesn't matter - we accelarate witch highes motor accelartion
+        
+        #for here we get target pose as angles
+
+        current_angles = (
+            self.wrapper.actual_angle_0[self.ROBOT_IK],
+            self.wrapper.actual_angle_1[self.ROBOT_IK],
+            self.wrapper.actual_angle_2[self.ROBOT_IK],
+            self.wrapper.actual_angle_3[self.ROBOT_IK],
+            self.wrapper.actual_angle_4[self.ROBOT_IK],
+            self.wrapper.actual_angle_5[self.ROBOT_IK],
+        )
+
+        diff_angles = [target_pose[i] - current_angles[i] for i in range(6)]
+
+        max_time = [abs(diff_angles[i]) / MAX_MOTOR_ANGLE_SPEED[i] for i in range(6)]
+
+        max_time_needed = max(max_time) #time needed to reach target angles with max motor speed for slowest joing
 

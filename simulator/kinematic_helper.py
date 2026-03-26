@@ -24,6 +24,8 @@ Limit = namedtuple("Limit", ["min", "max"])
 MAX_ANGULAR_SPEED = 60.0  # degrees per second (max speed for any joint)
 MAX_MOTOR_ANGLE_SPEED = [MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED]
 
+MAX_ANGULAR_ACCELERATION = 60.0 # degrees per second squared (max acceleration for any joint)
+MAX_MOTOR_ANGLE_ACCELERATION = [MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION] 
 
 ANGLES_LIMIT = [
     # (min, max) in degrees
@@ -318,9 +320,9 @@ def valid_max_angular_speed(angles1, angles2, time):
     max_overspeed = 1.0
     for i in range(6):
         angular_speed = abs(angles2[i] - angles1[i]) / time
-        if angular_speed > self.max_motors_angle_speed[i]:
+        if angular_speed > MAX_MOTOR_ANGLE_SPEED[i]:
             if angular_speed > max_overspeed:
-                max_overspeed = angular_speed/self.max_motors_angle_speed[i]
+                max_overspeed = angular_speed/MAX_MOTOR_ANGLE_SPEED[i]
     return max_overspeed
 
 def interpolate_pose(pose1, pose2, t):
@@ -339,3 +341,12 @@ def unwrap_angles(angles, reference):
                 angle += 360.0
             unwrapped.append(angle)
         return tuple(unwrapped)
+
+def valid_max_angular_accelaration(previous_joints_speed, angular_speeds, time):
+    max_overspeed = 1.0
+    for i in range(6):
+        angular_acceleration = abs(previous_joints_speed[i] - angular_speeds[i]) / time
+        if angular_acceleration > MAX_MOTOR_ANGLE_ACCELERATION[i]:
+            if angular_acceleration > max_overspeed:
+                max_overspeed = angular_acceleration/MAX_MOTOR_ANGLE_ACCELERATION[i]
+    return max_overspeed
