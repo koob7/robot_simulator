@@ -297,7 +297,7 @@ class kinematicManager:
             self.wrapper.actual_angle_5[self.ROBOT_IK],
         )
 
-        target_pose = unwrap_angles(current_angles, target_pose)
+        target_pose = unwrap_angles(target_pose, current_angles)
 
         diff_angles = [target_pose[i] - current_angles[i] for i in range(6)]
 
