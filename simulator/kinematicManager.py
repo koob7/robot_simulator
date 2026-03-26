@@ -150,7 +150,13 @@ class kinematicManager:
                 return
 
         if set_EDGE_ROBOT:
-            ik_result = calculate_ik(*target_pose)
+
+            if movement == MovementType.LINEAR:
+                ik_result = calculate_ik(*target_pose)
+            
+            elif movement == MovementType.PTP:
+                ik_result = target_pose
+
             self.wrapper.rotateRobot(self.ROBOT_EDGES, *ik_result)
             self.ik_tab.set_values(int(target_pose[0]), int(target_pose[1]), int(target_pose[2]), int(target_pose[3]), int(target_pose[4]), int(target_pose[5]))
 
@@ -202,6 +208,8 @@ class kinematicManager:
 
         if linear_distance < 0.1:
             logger.debug("very small movement, temporary skip")
+            self.simulation_timer.start()
+            self.animate_movement() 
             return
         
         step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)

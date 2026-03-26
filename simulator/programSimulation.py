@@ -2,6 +2,7 @@ from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtCore import QAbstractTableModel 
 from PySide6.QtWidgets import QComboBox, QTableView
 from RobotViewport import MovementType
+from kinematic_helper import *
 
 
 COMMAND_INPUT_LIMITS = { # MIN, MAX, DEFAULT
@@ -349,9 +350,21 @@ class ProgramSimulation(QtWidgets.QWidget):
         self.command_layout = SimulationSteps([])
         self.command_view.setModel(self.command_layout)
         self.command_view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.command_view.setSelectionMode(QTableView.SingleSelection)
+        self.command_view.viewport().installEventFilter(self)
+
         
 
         layout.addWidget(self.command_view)
+
+
+    def eventFilter(self, source, event):
+        if source == self.command_view.viewport() and event.type() == QtCore.QEvent.MouseButtonPress:
+            index = self.command_view.indexAt(event.pos())
+            if not index.isValid():
+                self.command_view.clearSelection()
+                self.command_view.setCurrentIndex(self.command_view.model().index(-1, 0))
+        return super().eventFilter(source, event)
 
     def _movement_label(self, movement_type: MovementType) -> str:
         if movement_type == MovementType.LINEAR:
@@ -402,10 +415,14 @@ class ProgramSimulation(QtWidgets.QWidget):
             return
 
         self.command_view.model().push_command(command)
-        
 
     def handle_remove(self):
         row = self.command_view.currentIndex().row()
+        if row == -1:
+            return
+
+        self.command_view.clearSelection()
+        self.command_view.setCurrentIndex(self.command_view.model().index(-1, 0))
 
         self.command_view.model().remove_command(row)
 
@@ -501,7 +518,12 @@ class ProgramSimulation(QtWidgets.QWidget):
 
         move_type = desired_command.movement_type
 
-        self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
+        if move_type == MovementType.LINEAR:
+            self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
+
+        elif move_type == MovementType.PTP:
+            position_touple = calculate_ik(*position_touple)
+            self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
 
     def handle_move_up(self):
         current_row = self.command_view.currentIndex().row()

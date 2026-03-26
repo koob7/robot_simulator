@@ -22,8 +22,8 @@ class FK_TAB(QtWidgets.QWidget):
 
         for idx in range(self.N_ARM_SLIDERS):
             self.sliders[idx] = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-            self.sliders[idx].setMinimum(-360)
-            self.sliders[idx].setMaximum(360)
+            self.sliders[idx].setMinimum(-180)
+            self.sliders[idx].setMaximum(180)
             self.sliders[idx].setSingleStep(1)
             self.sliders[idx].setPageStep(10)
             self.sliders[idx].setValue(0)
