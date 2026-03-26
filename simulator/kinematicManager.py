@@ -17,7 +17,14 @@ class kinematicManager:
         self.fk_tab = fk_tab
         self.velocity_tab = velocity_tab
         self.robot_viewport = robot_viewport
-        self.robot_control = robot_control  
+        self.robot_control = robot_control 
+
+        ik_tab.link_ik_changed_callback(self.ik_changed_callback)
+        ik_tab.link_ik_released_callback(self.ik_released_callback)
+
+        fk_tab.link_fk_changed_callback(self.fk_changed_callback)
+        fk_tab.link_fk_released_callback(self.fk_released_callback)
+
 
         #we handle 3 robots with idx
         self.ROBOT_FK = 0 #solid color for forward kinematics simulation

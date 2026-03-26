@@ -61,7 +61,7 @@ class MainWindow(QtWidgets.QSplitter):
     def __init__(self):
         super().__init__(QtCore.Qt.Orientation.Vertical)
         self.setWindowTitle("Robot simulator")
-        self.resize(700, 500)
+        self.resize(1000, 700)
 
         self.robot_viewport = RobotViewport()
         self.addWidget(self.robot_viewport)
@@ -83,7 +83,8 @@ class MainWindow(QtWidgets.QSplitter):
         self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")
         self.addWidget(self.tabs)
 
-        self.setSizes([340, 160])
+        self.setStretchFactor(0, 2)  # robot_viewport
+        self.setStretchFactor(1, 1)  # tabs
 
 
 if __name__ == "__main__":
@@ -96,11 +97,6 @@ if __name__ == "__main__":
     window.show()
 
     kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab, window.robot_viewport, window.robot_control)
-    window.ik_tab.link_ik_changed_callback(kinematic_manager.ik_changed_callback)
-    window.ik_tab.link_ik_released_callback(kinematic_manager.ik_released_callback)
-
-    window.fk_tab.link_fk_changed_callback(kinematic_manager.fk_changed_callback)
-    window.fk_tab.link_fk_released_callback(kinematic_manager.fk_released_callback)
 
     window.program_simulation_tab.connect_to_kinematic_manager(kinematic_manager)
 
