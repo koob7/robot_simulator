@@ -113,7 +113,7 @@ class kinematicManager:
         if not self.path:
             self.simulation_timer.stop()
             self.robot_viewport.status_changed_callback("Simulation completed")
-            if self.animation_end_callback:
+            if hasattr(self, 'animation_end_callback') and self.animation_end_callback:
                 self.animation_end_callback()
             return
         
