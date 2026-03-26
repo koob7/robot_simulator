@@ -1,3 +1,4 @@
 # robot_simulator
 
-<img width="702" height="834" alt="image" src="https://github.com/user-attachments/assets/71e990a8-7b16-4007-aaf6-d808e835b2b4" />
+<img width="1683" height="1042" alt="image" src="https://github.com/user-attachments/assets/f341f6c4-489f-4598-8214-454e3e0e7eca" />
+
