@@ -21,6 +21,10 @@ ARM_SAFE_DISTANCE_TO_OBJECT = 25.0 # mm (minimalna odległość ramienia od obie
 
 Limit = namedtuple("Limit", ["min", "max"])
 
+MAX_ANGULAR_SPEED = 60.0  # degrees per second (max speed for any joint)
+MAX_MOTOR_ANGLE_SPEED = [MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED]
+
+
 ANGLES_LIMIT = [
     # (min, max) in degrees
     Limit(-180, 180),  # Joint 1
@@ -308,3 +312,13 @@ def valid_pose(x, y, z, roll, pitch, yaw) -> ValidErrorCode:
 
 
     return ValidErrorCode.VALID
+
+
+def valid_max_angular_speed(angles1, angles2, time):
+    max_overspeed = 1.0
+    for i in range(6):
+        angular_speed = abs(angles2[i] - angles1[i]) / time
+        if angular_speed > self.max_motors_angle_speed[i]:
+            if angular_speed > max_overspeed:
+                max_overspeed = angular_speed/self.max_motors_angle_speed[i]
+    return max_overspeed

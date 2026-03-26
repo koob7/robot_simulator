@@ -25,14 +25,11 @@ class kinematicManager:
         self.ROBOT_EDGES = 2 #only edges for movement simulation
 
         # Stepper motor parameters
-        self.MAX_ANGULAR_SPEED = 60.0  # degrees per second (max speed for any joint)
         self.LINEAR_VELOCITY = 60.0     # mm/s (target constant linear velocity)
         self.LINERAR_SPEED_UP_VELOCITY = 25.0     # mm/s^2 (velocity during acceleration phase)
-        self.FRAME_TIME = 0.016         # 16ms per frame (~60 FPS)
         self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
 
-        self.max_motors_angle_speed = [self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED, self.MAX_ANGULAR_SPEED]
-
+        
         self.wrapper = Wrapper()
 
         self.wrapper.moveRobot(self.ROBOT_FK, 300, 0, 0)
@@ -151,15 +148,6 @@ class kinematicManager:
                 angle += 360.0
             unwrapped.append(angle)
         return tuple(unwrapped)
-    
-    def valid_max_angular_speed(self, angles1, angles2, time):
-        max_overspeed = 1.0
-        for i in range(6):
-            angular_speed = abs(angles2[i] - angles1[i]) / time
-            if angular_speed > self.max_motors_angle_speed[i]:
-                if angular_speed > max_overspeed:
-                    max_overspeed = angular_speed/self.max_motors_angle_speed[i]
-        return max_overspeed
 
     def plan_motion(self, target_pose, speed, acceleration, movement: MovementType = None, set_EDGE_ROBOT = False, callback=None):
         if valid_pose(*target_pose) not in self.acceptable_simulated_errors:
@@ -260,7 +248,7 @@ class kinematicManager:
             tmp =  calculate_ik(*interpolated_pose)
             tmp = self.unwrap_angles(tmp, previous_angles)    
 
-            time*= self.valid_max_angular_speed(previous_angles, tmp, time)
+            time*= valid_max_angular_speed(previous_angles, tmp, time)
 
             angular_speeds = [
                 abs(tmp[i] - previous_angles[i]) / time
