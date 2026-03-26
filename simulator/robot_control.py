@@ -129,7 +129,7 @@ class RobotControl:
             self.timeout_timer.stop()
 
 
-    def __send_command(self, timeout, command_code: int, param_1 = None: int, param_2 = None: int, param_3 = None: int, param_4 = None: int, param_5 = None: int, param_6 = None: int) -> bool:
+    def __send_command(self, timeout, command_code: int, param_1: int = None, param_2: int = None, param_3: int = None, param_4: int = None, param_5: int = None, param_6: int = None) -> bool:
         if self.connection_status != ConnectionStatus.DISCONNECTED and self.connection_status != ConnectionStatus.USART_ERROR:
             return
 

@@ -132,23 +132,6 @@ class kinematicManager:
 
         self.plan_motion(target_pose, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
 
-    def interpolate_pose(self, pose1, pose2, t):
-        return tuple(
-            pose1[i] + (pose2[i] - pose1[i]) * t
-            for i in range(6)
-        )
-    
-    def unwrap_angles(self, angles, reference):
-        unwrapped = []
-        for i in range(6):
-            angle = angles[i]
-            while angle - reference[i] > 180.0:
-                angle -= 360.0
-            while angle - reference[i] < -180.0:
-                angle += 360.0
-            unwrapped.append(angle)
-        return tuple(unwrapped)
-
     def plan_motion(self, target_pose, speed, acceleration, movement: MovementType = None, set_EDGE_ROBOT = False, callback=None):
         if valid_pose(*target_pose) not in self.acceptable_simulated_errors:
                 logger.debug("Invalid target pose, skipping IK calculation")
@@ -220,7 +203,7 @@ class kinematicManager:
 
         for step in range(1, step_number+1):
 
-            interpolated_pose = self.interpolate_pose(current_pose, target_pose, step/step_number)
+            interpolated_pose = interpolate_pose(current_pose, target_pose, step/step_number)
             interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
 
             if step<= speed_up_steps:
@@ -246,7 +229,7 @@ class kinematicManager:
                 return
 
             tmp =  calculate_ik(*interpolated_pose)
-            tmp = self.unwrap_angles(tmp, previous_angles)    
+            tmp = unwrap_angles(tmp, previous_angles)    
 
             time*= valid_max_angular_speed(previous_angles, tmp, time)
 

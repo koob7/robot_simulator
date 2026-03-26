@@ -322,3 +322,20 @@ def valid_max_angular_speed(angles1, angles2, time):
             if angular_speed > max_overspeed:
                 max_overspeed = angular_speed/self.max_motors_angle_speed[i]
     return max_overspeed
+
+def interpolate_pose(pose1, pose2, t):
+        return tuple(
+            pose1[i] + (pose2[i] - pose1[i]) * t
+            for i in range(6)
+        )
+    
+def unwrap_angles(angles, reference):
+        unwrapped = []
+        for i in range(6):
+            angle = angles[i]
+            while angle - reference[i] > 180.0:
+                angle -= 360.0
+            while angle - reference[i] < -180.0:
+                angle += 360.0
+            unwrapped.append(angle)
+        return tuple(unwrapped)
