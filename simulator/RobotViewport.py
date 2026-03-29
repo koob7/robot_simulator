@@ -16,7 +16,7 @@ class MovementType(enum.Enum):
 class RobotViewport(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(200)
+        self.setMinimumHeight(500)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
 
@@ -170,7 +170,7 @@ class RobotViewport(QtWidgets.QWidget):
         self.wrapper.Initialize(int(self.winId()))
         self.wrapper.InitializeScene()
         self.wrapper.SetCamera(self.actual_x, self.actual_y, self.actual_z, self.yaw, self.pitch)
-        self.wrapper.CalcProjectionMatrix(max(1, self.width()), max(1, self.height()))
+
 
         self._initialized = True
         self.setFocus()
@@ -184,8 +184,7 @@ class RobotViewport(QtWidgets.QWidget):
         self.status_label.raise_()
         self.position_movement_type_combo()
         self.movement_type_combo.raise_()
-        if self._initialized:
-            self.wrapper.CalcProjectionMatrix(max(1, event.size().width()), max(1, event.size().height()))
+
 
     def position_status_label(self):
         self.status_label.adjustSize()

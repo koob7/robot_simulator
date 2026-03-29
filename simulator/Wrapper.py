@@ -19,8 +19,7 @@ class Wrapper:
 
 		self.dll.connect_chart.argtypes = [c_uint32, c_uint64]
 		self.dll.close_chart.argtypes = [c_uint32]
-		self.dll.update_chart_data.argtypes = [c_uint32, POINTER(c_float), c_uint32, c_uint32]
-		self.dll.calc_chart_size.argtypes = [c_uint32]
+		self.dll.update_chart_data.argtypes = [c_uint32, POINTER(c_float), POINTER(c_float), c_uint32, c_uint32, c_uint32]
 		self.dll.render_charts.argtypes = [c_float]
 
 
@@ -39,14 +38,14 @@ class Wrapper:
 	def connect_chart(self, chart_id, hwnd):
 		self.dll.connect_chart(chart_id, hwnd)
 
-	def close_chart(self, chart_id):
-		self.dll.close_chart(chart_id)
+	# not supported for now - its easier to don't refresh it
+	# def close_chart(self, chart_id):
+	# 	self.dll.close_chart(chart_id)
 
-	def update_chart_data(self, chart_id, data_array, data_len, max_value):
-		self.dll.update_chart_data(chart_id, data_array, data_len, max_value)
-
-	def calc_chart_size(self, chart_id):
-		self.dll.calc_chart_size(chart_id)
+	def update_chart_data(self, chart_id, data_speed_array, data_acceleration_array, data_len, max_speed_value, max_acceleration_value):
+		arr_speed = (c_float * len(data_speed_array))(*data_speed_array)
+		arr_acceleration = (c_float * len(data_acceleration_array))(*data_acceleration_array)
+		self.dll.update_chart_data(chart_id, arr_speed, arr_acceleration, data_len, max_speed_value, max_acceleration_value)
 
 	def render_charts(self, progress):
 		self.dll.render_charts(progress)
@@ -74,8 +73,9 @@ class Wrapper:
 	def Initialize(self, hwnd):
 		self.dll.Initialize(hwnd)
 
-	def CalcProjectionMatrix(self, res_x, res_y):
-		self.dll.CalcProjectionMatrix(res_x, res_y)
+	# unused - now it caluclates automatically
+	# def CalcProjectionMatrix(self, res_x, res_y):
+	# 	self.dll.CalcProjectionMatrix(res_x, res_y)
 
 	def SetCamera(self, x, y, z, angle_x, angle_y):
 		self.dll.SetCamera(x, y, z, angle_x, angle_y)

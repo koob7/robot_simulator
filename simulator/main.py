@@ -33,10 +33,11 @@ class dummy_chart_widget(QtWidgets.QWidget):
 
         self.dummy_data = [0.0] * 5000
         wrapper = Wrapper()
+        self.dummy_data_inverted = [0.0] * 5000
 
         for i in range(len(self.dummy_data)):
             self.dummy_data[i] = math.sin(i/50 * 0.1) * 50 + 50
-            #dummy_data[i] = 1*i
+            self.dummy_data_inverted[i] = 100 - self.dummy_data[i]
 
         self.chart_windows = [None] * 7
 
@@ -69,9 +70,7 @@ class dummy_chart_widget(QtWidgets.QWidget):
         wrapper = Wrapper()
         for i in range(7):
             wrapper.connect_chart(i, int(self.chart_windows[i].winId()))
-            arr = (c_float * len(self.dummy_data))(*self.dummy_data)
-            wrapper.update_chart_data(i, arr, len(self.dummy_data), 100)
-            wrapper.calc_chart_size(i)
+            wrapper.update_chart_data(i, self.dummy_data, self.dummy_data_inverted, len(self.dummy_data), 100, 100)
 
     def on_tab_minimized(self, widget: QtWidgets.QWidget, minimized: bool):
         if widget != self:
@@ -139,7 +138,7 @@ class MainWindow(QtWidgets.QSplitter):
     def __init__(self):
         super().__init__(QtCore.Qt.Orientation.Vertical)
         self.setWindowTitle("Robot simulator")
-        self.resize(200, 200)
+        self.resize(1000, 700)
 
         self.robot_viewport = RobotViewport()
         self.addWidget(self.robot_viewport)
