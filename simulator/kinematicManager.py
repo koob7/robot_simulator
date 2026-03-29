@@ -122,7 +122,7 @@ class kinematicManager:
         self.simulation_timer.setInterval(int(step_time * 1000))
         self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
 
-        self.velocity_tab.update_progress_marker(self.current_step_index)
+        self.velocity_tab.update_progress(self.current_step_index)
         self.current_step_index += 1
 
     def abort_motion(self):
@@ -215,7 +215,8 @@ class kinematicManager:
         step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)
 
         forward_path = []
-        velocity_profile = []
+        velocity_profile = [[], [], [], [], [], [], [], [] ,[], [], [], [], [], []]
+
         previous_angles = current_angles
         previous_pose = current_pose
         previous_joints_speed = [0.0] * 6
@@ -264,6 +265,9 @@ class kinematicManager:
                 for i in range(6)
             ]
 
+            for i in range (6):
+                velocity_profile[i*2 + 3].append(abs(previous_joints_speed[i] - angular_speeds[i]) / time)
+
             previous_joints_speed = angular_speeds      
 
             angular_acceleration_limit = valid_max_angular_accelaration(previous_joints_speed, angular_speeds, time)
@@ -274,10 +278,17 @@ class kinematicManager:
                 for i in range(6)
             ]
 
+
+            for i in range(6):
+                velocity_profile[i*2 + 2].append(abs(tmp[i] - previous_angles[i]) / time)
+
             tcp_speed = interpolated_distance/time
 
+            velocity_profile[0].append(tcp_speed)
+            velocity_profile[1].append(tcp_speed)
+
             forward_path.append((time, tmp, tcp_speed))
-            velocity_profile.append(tuple( [tcp_speed] + angular_speeds))
+
             previous_angles = tmp
             previous_pose = interpolated_pose       
             previous_joints_speed = angular_speeds         
@@ -286,8 +297,8 @@ class kinematicManager:
         self.path_steps = step_number
         self.current_step_index = 0
 
-        self.velocity_tab.draw_velocity_profiles(velocity_profile)
-        self.velocity_tab.update_progress_marker(0)
+        self.velocity_tab.update_velocity_profiles(velocity_profile, step_number, speed, speed, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION)
+        self.velocity_tab.update_progress(0)
 
         self.simulation_timer.start()
         self.animate_movement()
@@ -319,9 +330,13 @@ class kinematicManager:
 
 
         forward_path = []
-        velocity_profile = []
+        velocity_profile = [[], [], [], [], [], [], [], [] ,[], [], [], [], [], []]
         previous_angles = current_angles
         previous_pose = calculate_fk(*current_angles)
+        max_tcp_speed = 0.0
+        previous_tcp_speed = 0.0
+
+        previous_angular_speed = [0.0] * 6
 
         if (speed_up_steps>step_number/2):
             speed_up_steps = math.ceil(step_number/2)
@@ -353,23 +368,41 @@ class kinematicManager:
                 time  = self.SINGLE_STEP_ANGLE/speed
 
             tcp_speed = interpolated_distance/time
+            if tcp_speed > max_tcp_speed:
+                max_tcp_speed = tcp_speed
+
+            velocity_profile[0].append(tcp_speed)
+            velocity_profile[1].append(( tcp_speed - previous_tcp_speed)/time/2)
+
             angular_speeds = [
                 abs(interpolated_angle[i] - previous_angles[i]) / time
                 for i in range(6)
             ]
 
+            for i in range(6):
+                velocity_profile[i*2 + 2].append(angular_speeds[i])
+                velocity_profile[i*2 + 3].append(((angular_speeds[i] - previous_angular_speed[i] ) / time)/2 + acceleration/2)
+
             forward_path.append((time, interpolated_angle, tcp_speed))
-            velocity_profile.append(tuple( [tcp_speed] + angular_speeds))
 
             previous_pose = interpolated_pose
             previous_angles = interpolated_angle
+            previous_angular_speed = angular_speeds
+            previous_tcp_speed = tcp_speed
+
+
+        min_v = min(velocity_profile[1])
+        max_v = max(velocity_profile[1])
+        div = max(abs(min_v), abs(max_v))
+        for i in range(0, len(velocity_profile[1])):
+            velocity_profile[1][i] = velocity_profile[1][i] + div/2
 
         self.path  = forward_path
         self.path_steps = step_number
         self.current_step_index = 0
 
-        self.velocity_tab.draw_velocity_profiles(velocity_profile)
-        self.velocity_tab.update_progress_marker(0)
+        self.velocity_tab.update_velocity_profiles(velocity_profile, step_number, max_tcp_speed, div*2, speed, acceleration)
+        self.velocity_tab.update_progress(0)
 
         self.simulation_timer.start()
         self.animate_movement()

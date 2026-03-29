@@ -26,67 +26,6 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s"
 )
 
-class dummy_chart_widget(QtWidgets.QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setMinimumHeight(200)
-
-        self.dummy_data = [0.0] * 5000
-        wrapper = Wrapper()
-        self.dummy_data_inverted = [0.0] * 5000
-
-        for i in range(len(self.dummy_data)):
-            self.dummy_data[i] = math.sin(i/50 * 0.1) * 50 + 50
-            self.dummy_data_inverted[i] = 100 - self.dummy_data[i]
-
-        self.chart_windows = [None] * 7
-
-        width = self.width()
-
-        for i in range (7):
-            self.chart_windows[i] = QtWidgets.QWidget(self)
-            self.chart_windows[i].setGeometry(10 , 10 + 110*i, width-20, 100)
-
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(lambda: wrapper.render_charts((time.time() % 60.0) / 60.0))
-        self.timer.start(16)
-        
-
-    def resizeEvent(self, event):
-        _ = event
-        wrapper = Wrapper()
-        width = self.width()
-        for i in range(7):
-            self.chart_windows[i].setGeometry(10 , 10 + 110*i, width-20, 100)
-            wrapper.render_charts((time.time() % 60.0) / 60.0)
-
-    def close(self):
-        wrapper = Wrapper()
-        for i in range(7):
-            wrapper.close_chart(i)
-
-    def reopen(self):
-        wrapper = Wrapper()
-        for i in range(7):
-            wrapper.connect_chart(i, int(self.chart_windows[i].winId()))
-            wrapper.update_chart_data(i, self.dummy_data, self.dummy_data_inverted, len(self.dummy_data), 100, 100)
-
-    def on_tab_minimized(self, widget: QtWidgets.QWidget, minimized: bool):
-        if widget != self:
-            return
-
-
-        print(f"{self.__class__.__name__} zminimalizowany: {minimized}")
-
-        if minimized:
-            self.close()
-        else:
-            self.reopen()
-    
-
-
-
 class ButtonTabWidget(QtWidgets.QWidget):
     tab_minimized = Signal(object,bool)
 
@@ -152,15 +91,12 @@ class MainWindow(QtWidgets.QSplitter):
         self.usart_tab = USART_TAB(usart_interface=self.usart_control)
         self.program_simulation_tab = ProgramSimulation(self.ik_tab, self.robot_viewport)
 
-        self.dummy_chart = dummy_chart_widget()
-
         self.tabs = ButtonTabWidget()
         self.tabs.add_tab(self.ik_tab, "IK control", default_active=True)
         self.tabs.add_tab(self.fk_tab, "FK control")
         self.tabs.add_tab(self.velocity_tab, "Velocity chart", default_active=True)
         self.tabs.add_tab(self.usart_tab, "USART monitor")
         self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")
-        self.tabs.add_tab(self.dummy_chart, "Dummy chart")
         self.addWidget(self.tabs)
 
 
