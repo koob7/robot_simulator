@@ -1,4 +1,4 @@
-from ctypes import CDLL, c_uint64, c_uint32, c_float, c_int32, c_char_p
+﻿from ctypes import CDLL, c_uint64, c_uint32, c_float, c_int32, c_char_p, POINTER
 import math
 import sys
 import os
@@ -17,6 +17,13 @@ class Wrapper:
 		self.dll.SetCamera.argtypes = [c_float, c_float, c_float, c_float, c_float]
 		self.dll.RobotMove.argtypes = [c_uint32, c_float, c_float, c_float, c_float, c_float, c_float, c_float, c_float, c_float]
 
+		self.dll.connect_chart.argtypes = [c_uint32, c_uint64]
+		self.dll.close_chart.argtypes = [c_uint32]
+		self.dll.update_chart_data.argtypes = [c_uint32, POINTER(c_float), c_uint32, c_uint32]
+		self.dll.calc_chart_size.argtypes = [c_uint32]
+		self.dll.render_charts.argtypes = [c_float]
+
+
 		# Dynamiczne tablice stanu robota (rozszerzane na zadany indeks).
 		self.actual_x = []
 		self.actual_y = []
@@ -28,6 +35,21 @@ class Wrapper:
 		self.actual_angle_3 = []
 		self.actual_angle_4 = []
 		self.actual_angle_5 = []
+
+	def connect_chart(self, chart_id, hwnd):
+		self.dll.connect_chart(chart_id, hwnd)
+
+	def close_chart(self, chart_id):
+		self.dll.close_chart(chart_id)
+
+	def update_chart_data(self, chart_id, data_array, data_len, max_value):
+		self.dll.update_chart_data(chart_id, data_array, data_len, max_value)
+
+	def calc_chart_size(self, chart_id):
+		self.dll.calc_chart_size(chart_id)
+
+	def render_charts(self, progress):
+		self.dll.render_charts(progress)
 
 	def _ensure_idx(self, idx):
 		if idx < 0:

@@ -12,6 +12,13 @@ from programSimulation import ProgramSimulation
 from usart_control import USARTControl
 from robot_control import RobotControl
 
+from PySide6.QtCore import QTimer, Signal
+
+import math
+from ctypes import c_float, POINTER
+
+import time
+
 import logging
 
 logging.basicConfig(
@@ -19,7 +26,71 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s"
 )
 
+class dummy_chart_widget(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setMinimumHeight(200)
+
+        self.dummy_data = [0.0] * 5000
+        wrapper = Wrapper()
+
+        for i in range(len(self.dummy_data)):
+            self.dummy_data[i] = math.sin(i/50 * 0.1) * 50 + 50
+            #dummy_data[i] = 1*i
+
+        self.chart_windows = [None] * 7
+
+        width = self.width()
+
+        for i in range (7):
+            self.chart_windows[i] = QtWidgets.QWidget(self)
+            self.chart_windows[i].setGeometry(10 , 10 + 110*i, width-20, 100)
+
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(lambda: wrapper.render_charts((time.time() % 60.0) / 60.0))
+        self.timer.start(16)
+        
+
+    def resizeEvent(self, event):
+        _ = event
+        wrapper = Wrapper()
+        width = self.width()
+        for i in range(7):
+            self.chart_windows[i].setGeometry(10 , 10 + 110*i, width-20, 100)
+            wrapper.render_charts((time.time() % 60.0) / 60.0)
+
+    def close(self):
+        wrapper = Wrapper()
+        for i in range(7):
+            wrapper.close_chart(i)
+
+    def reopen(self):
+        wrapper = Wrapper()
+        for i in range(7):
+            wrapper.connect_chart(i, int(self.chart_windows[i].winId()))
+            arr = (c_float * len(self.dummy_data))(*self.dummy_data)
+            wrapper.update_chart_data(i, arr, len(self.dummy_data), 100)
+            wrapper.calc_chart_size(i)
+
+    def on_tab_minimized(self, widget: QtWidgets.QWidget, minimized: bool):
+        if widget != self:
+            return
+
+
+        print(f"{self.__class__.__name__} zminimalizowany: {minimized}")
+
+        if minimized:
+            self.close()
+        else:
+            self.reopen()
+    
+
+
+
 class ButtonTabWidget(QtWidgets.QWidget):
+    tab_minimized = Signal(object,bool)
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -38,6 +109,10 @@ class ButtonTabWidget(QtWidgets.QWidget):
 
     def add_tab(self, widget: QtWidgets.QWidget, name: str, default_active=False):
         self.widgets[name] = widget
+
+        if hasattr(widget, "on_tab_minimized"):
+            self.tab_minimized.connect(widget.on_tab_minimized)
+
         btn = QtWidgets.QPushButton(name)
         btn.clicked.connect(lambda checked=False, n=name: self.toggle_tab(n))
         self.button_layout.addWidget(btn)
@@ -46,6 +121,8 @@ class ButtonTabWidget(QtWidgets.QWidget):
 
     def toggle_tab(self, name: str):
         widget = self.widgets[name]
+        state = widget in self.active_widgets
+        self.tab_minimized.emit(widget, state)
         if widget in self.active_widgets:
             self.active_widgets.pop(widget)
             widget.setParent(None)
@@ -54,14 +131,15 @@ class ButtonTabWidget(QtWidgets.QWidget):
             self.splitter.addWidget(widget)
         
         count = self.splitter.count()
-        self.splitter.setSizes([self.splitter.width() // count] * count)
-            
+        if count > 0:
+            self.splitter.setSizes([self.splitter.width() // count] * count)
+        
 
 class MainWindow(QtWidgets.QSplitter):
     def __init__(self):
         super().__init__(QtCore.Qt.Orientation.Vertical)
         self.setWindowTitle("Robot simulator")
-        self.resize(1000, 700)
+        self.resize(200, 200)
 
         self.robot_viewport = RobotViewport()
         self.addWidget(self.robot_viewport)
@@ -75,17 +153,20 @@ class MainWindow(QtWidgets.QSplitter):
         self.usart_tab = USART_TAB(usart_interface=self.usart_control)
         self.program_simulation_tab = ProgramSimulation(self.ik_tab, self.robot_viewport)
 
+        self.dummy_chart = dummy_chart_widget()
+
         self.tabs = ButtonTabWidget()
         self.tabs.add_tab(self.ik_tab, "IK control", default_active=True)
         self.tabs.add_tab(self.fk_tab, "FK control")
         self.tabs.add_tab(self.velocity_tab, "Velocity chart", default_active=True)
         self.tabs.add_tab(self.usart_tab, "USART monitor")
         self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")
+        self.tabs.add_tab(self.dummy_chart, "Dummy chart")
         self.addWidget(self.tabs)
+
 
         self.setStretchFactor(0, 2)  # robot_viewport
         self.setStretchFactor(1, 1)  # tabs
-
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
