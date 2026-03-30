@@ -21,6 +21,7 @@ class Wrapper:
 		self.dll.close_chart.argtypes = [c_uint32]
 		self.dll.update_chart_data.argtypes = [c_uint32, POINTER(c_float), POINTER(c_float), c_uint32, c_uint32, c_uint32]
 		self.dll.render_charts.argtypes = [c_float]
+		self.dll.update_timestamps.argtypes = [POINTER(c_float), c_float, c_uint32]
 
 
 		# Dynamiczne tablice stanu robota (rozszerzane na zadany indeks).
@@ -41,6 +42,10 @@ class Wrapper:
 	# not supported for now - its easier to don't refresh it
 	# def close_chart(self, chart_id):
 	# 	self.dll.close_chart(chart_id)
+
+	def update_timestamps(self, timestamps_array, duration, length):
+		arr_timestamps = (c_float * len(timestamps_array))(*timestamps_array)
+		self.dll.update_timestamps(arr_timestamps, duration, length)
 
 	def update_chart_data(self, chart_id, data_speed_array, data_acceleration_array, data_len, max_speed_value, max_acceleration_value):
 		arr_speed = (c_float * len(data_speed_array))(*data_speed_array)

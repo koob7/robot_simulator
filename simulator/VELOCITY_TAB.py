@@ -6,7 +6,7 @@ from Wrapper import Wrapper
 class VELOCITY_TAB(QtWidgets.QWidget):
 	def __init__(self):
 		super().__init__()
-		self.setMinimumHeight(200)
+		self.setMinimumHeight(600)
 		self.setMinimumWidth(200)
 
 		self.wrapper = Wrapper()
@@ -18,6 +18,8 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 		self.chart_windows = [None] * self.CHART_COUNT
 		self.current_step = 0
 		self.steps_len = 0
+		self.time_elapsed = 0.0
+		self.duration = 0.0
 		self.minimized = False
 
 
@@ -44,7 +46,10 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 	def render_charts(self):
 		if self.minimized:
 			return
-		self.wrapper.render_charts( (self.current_step+1)/self.steps_len if self.steps_len > 0 else 0)
+		if (self.time_elapsed >= self.duration):
+			self.wrapper.render_charts(-1)
+			return
+		self.wrapper.render_charts(self.time_elapsed)
 
 	def resizeEvent(self, event):
 		width = self.width()
@@ -61,18 +66,19 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 
 		self.minimized = minimized
 
-	def update_progress(self, current_step):
-		self.current_step = current_step
-		if self.current_step == self.steps_len-1:
-			self.current_step = -1 # to hide slider when movement is finished
+	def update_progress(self, time_elapsed):
+		self.time_elapsed = time_elapsed
 
-	def update_velocity_profiles(self, velocity_profile, length, max_tcp_speed, max_tcp_acceleration, max_joint_speed, max_joint_acceleration):
+	def update_velocity_profiles(self, velocity_profile, length, max_tcp_speed, max_tcp_acceleration, max_joint_speed, max_joint_acceleration, duration):
 		self.steps_len = length
+		self.duration = duration
 		
-		self.wrapper.update_chart_data(int(0), velocity_profile[0], velocity_profile[1], int(self.steps_len), int(max_tcp_speed), int(max_tcp_acceleration))
+		self.wrapper.update_chart_data(int(0), velocity_profile[1][0], velocity_profile[1][1], int(self.steps_len), int(max_tcp_speed), int(max_tcp_acceleration))
 
-		for i in range(2, 14, 2):
-			self.wrapper.update_chart_data(int(i/2), velocity_profile[i], velocity_profile[i+1], int(self.steps_len), int(max_joint_speed), int(max_joint_acceleration))
+		for i in range(6):
+			self.wrapper.update_chart_data(int(i+1), velocity_profile[2][i], velocity_profile[3][i], int(self.steps_len), int(max_joint_speed), int(max_joint_acceleration))
+
+		self.wrapper.update_timestamps(velocity_profile[0], self.duration, int(self.steps_len))
 
 	def update_chart_data(self, index, data_speed, data_acceleration, data_len, max_speed_value, max_acceleration_value):
 		self.wrapper.update_chart_data(index, data_speed, data_acceleration, data_len, max_speed_value, max_acceleration_value)

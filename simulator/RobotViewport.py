@@ -16,7 +16,7 @@ class MovementType(enum.Enum):
 class RobotViewport(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(500)
+        self.setMinimumHeight(200)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
 
