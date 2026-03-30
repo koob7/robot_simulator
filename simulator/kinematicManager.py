@@ -39,7 +39,7 @@ class kinematicManager:
         self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
 
         self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
-        self.SINGLE_STEP_ANGLE = 0.5 # degrees (for simple linear interpolation in joint space)
+        self.SINGLE_STEP_ANGLE = 0.2 # degrees (for simple linear interpolation in joint space)
 
         self.current_step_index = 0
         self.elapsed_time = 0.0
@@ -372,7 +372,7 @@ class kinematicManager:
         return spatium
 
 
-    def plan_ptp_motion(self, target_pose, speed, acceleration, initial_speed = None, final_speed = None):
+    def plan_ptp_motion(self, target_pose, speed, acceleration, initial_speed = None, final_speed = None, slow_down = True):
        
         #for here we get target pose as anglesz
 
@@ -399,20 +399,23 @@ class kinematicManager:
         diff_angles = [abs(target_pose[i] - current_angles[i]) for i in range(6)]
 
         s_acc = [(speed**2 - initial_speed[i]**2)/(2*acceleration) for i in range(6)]
-        s_dec = [(speed**2 - final_speed[i]**2  )/(2*acceleration) for i in range(6)]
+        s_dec = [0.0] * 6
+        if slow_down:
+            s_dec = [(speed**2 - final_speed[i]**2  )/(2*acceleration) for i in range(6)]
+        
 
         const_angle  = [diff_angles[i] - s_acc[i] - s_dec[i] for i in range(6)]
 
         for i in range(6):
             if const_angle[i]<0:
                 const_angle[i] = 0
-                angle_speed[i] = math.sqrt((diff_angles[i]*acceleration + (initial_speed[i]**2 + final_speed[i]**2)/2))
+                angle_speed[i] = math.sqrt((diff_angles[i]*acceleration + (initial_speed[i] + final_speed[i] *(1 if slow_down else 0))/2))
             #dla else nic nie musimy robić
 
         minimal_time = [0.0] * 6
         for i in range(6):
             if angle_speed[i] !=0:
-                minimal_time[i] = (angle_speed[i] - initial_speed[i])/acceleration + (angle_speed[i] - final_speed[i])/acceleration + const_angle[i]/angle_speed[i]
+                minimal_time[i] = (angle_speed[i] - initial_speed[i])/acceleration + (angle_speed[i] - final_speed[i])/acceleration*(1 if slow_down else 0) + const_angle[i]/angle_speed[i]
 
 
         simulation_time = max(minimal_time)
@@ -424,22 +427,34 @@ class kinematicManager:
         # pierwsza cześć obliczeń z zeszytu #
 
         # wzorki z matlab
-        for i in range(6):
-            angle_speed[i] = (
-                initial_speed[i]/2 
-                + final_speed[i]/2 
-                + (acceleration * simulation_time)/2 
-                - (math.sqrt(
-                    simulation_time**2 * acceleration**2 
-                    + 2*simulation_time * acceleration * initial_speed[i] 
-                    + 2*simulation_time * acceleration * final_speed[i] 
-                    - 4 * diff_angles[i] * acceleration 
-                    - initial_speed[i]**2 
-                    + 2 * initial_speed[i] * final_speed[i] 
-                    - final_speed[i] 
-                    )
-                )/2
-            )
+        if slow_down:
+            for i in range(6):
+                angle_speed[i] = (
+                    initial_speed[i]/2 
+                    + final_speed[i]/2 
+                    + (acceleration * simulation_time)/2 
+                    - (math.sqrt(
+                        simulation_time**2 * acceleration**2 
+                        + 2*simulation_time * acceleration * initial_speed[i] 
+                        + 2*simulation_time * acceleration * final_speed[i] 
+                        - 4 * diff_angles[i] * acceleration 
+                        - initial_speed[i]**2 
+                        + 2 * initial_speed[i] * final_speed[i] 
+                        - final_speed[i] 
+                        )
+                    )/2
+                )
+
+        else:
+            for i in range(6):
+                angle_speed[i] = (
+                    initial_speed[i]
+                    - math.sqrt( acceleration * ( acceleration * simulation_time**2
+                        + 2 * initial_speed[i] * simulation_time
+                        - 2 * diff_angles[i]
+                        ))
+                    + acceleration * simulation_time
+                )
 
 
         # commented values not used now - just for debugging purposes
@@ -447,7 +462,10 @@ class kinematicManager:
         # speed_down_distance = [(angle_speed[i]**2 - final_speed[i]**2)/(2*acceleration) for i in range(6)]
 
         speed_up_time  = [(angle_speed[i] - initial_speed[i])/acceleration for i in range(6)]
-        speed_down_time = [(angle_speed[i] - final_speed[i])/acceleration for i in range(6)]
+
+        speed_down_time = [0.0] * 6
+        if slow_down:
+            speed_down_time = [(angle_speed[i] - final_speed[i])/acceleration for i in range(6)]
         # const_time  = [(diff_angles[i] - speed_up_distance[i] - speed_down_distance[i])/angle_speed[i] if angle_speed[i]!=0 else 0 for i in range(6)]
     
 
