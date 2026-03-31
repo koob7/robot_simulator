@@ -409,7 +409,7 @@ class kinematicManager:
         for i in range(6):
             if const_angle[i]<0:
                 const_angle[i] = 0
-                angle_speed[i] = math.sqrt((diff_angles[i]*acceleration + (initial_speed[i] + final_speed[i] *(1 if slow_down else 0))/2))
+                angle_speed[i] = math.sqrt((diff_angles[i]*acceleration + (initial_speed[i]**2 + final_speed[i]**2 *(1 if slow_down else 0))/2))
             #dla else nic nie musimy robić
 
         minimal_time = [0.0] * 6
