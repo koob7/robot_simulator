@@ -192,7 +192,16 @@ class kinematicManager:
         if movement == MovementType.LINEAR:
             self.path = self.plan_linear_motion(target_pose, speed, acceleration)
         elif movement == MovementType.PTP:
-            self.path = self.plan_ptp_motion(target_pose, speed, acceleration)
+            current_angles = (
+                self.wrapper.actual_angle_0[self.ROBOT_IK],
+                self.wrapper.actual_angle_1[self.ROBOT_IK],
+                self.wrapper.actual_angle_2[self.ROBOT_IK],
+                self.wrapper.actual_angle_3[self.ROBOT_IK],
+                self.wrapper.actual_angle_4[self.ROBOT_IK],
+                self.wrapper.actual_angle_5[self.ROBOT_IK],
+            )
+
+            self.path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True)
         
         if self.path is None:
             logger.debug("Motion planning failed, skipping movement")
@@ -372,118 +381,120 @@ class kinematicManager:
         return spatium
 
 
-    def plan_ptp_motion(self, target_pose, speed, acceleration, initial_speed = None, final_speed = None, slow_down = True):
-       
-        #for here we get target pose as anglesz
+    def calculate_minimial_joint_time (self, spatium, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None):
+        Sa = (v_max**2 - v_in**2) / (2 * acceleration)
+        divider = 0
+        Sd = 0
+        Sc = 0
+        Td = 0
 
-        current_angles = (
-            self.wrapper.actual_angle_0[self.ROBOT_IK],
-            self.wrapper.actual_angle_1[self.ROBOT_IK],
-            self.wrapper.actual_angle_2[self.ROBOT_IK],
-            self.wrapper.actual_angle_3[self.ROBOT_IK],
-            self.wrapper.actual_angle_4[self.ROBOT_IK],
-            self.wrapper.actual_angle_5[self.ROBOT_IK],
-        )
-
-        if initial_speed is None:
-            initial_speed = [0.0] * 6
-
-        if final_speed is None:
-            final_speed = [0.0] * 6
-
-        angle_speed = [speed] * 6
-        target_pose = unwrap_angles(target_pose, current_angles)
-
-        directions = [1 if target_pose[i] - current_angles[i] >= 0 else -1 for i in range(6)]
-
-        diff_angles = [abs(target_pose[i] - current_angles[i]) for i in range(6)]
-
-        s_acc = [(speed**2 - initial_speed[i]**2)/(2*acceleration) for i in range(6)]
-        s_dec = [0.0] * 6
         if slow_down:
-            s_dec = [(speed**2 - final_speed[i]**2  )/(2*acceleration) for i in range(6)]
+            divider = 1
+            Sd = (v_max**2 - v_out**2) / (2 * acceleration)
+            #V_out - zostaje bez zmian
         
+        else:
+            #Sd - już ustawione na 0
+            v_out = 0 #redundancja ale zostawmy
+            divider = 2
+        
+        if spatium - Sa - Sd <=0:
+            Sc = 0 # redundancja ale zostawmy
+        else:
+            Sc = spatium - Sa - Sd
 
-        const_angle  = [diff_angles[i] - s_acc[i] - s_dec[i] for i in range(6)]
+        new_v = math.sqrt (((spatium - Sc)*2*acceleration + v_in**2 + v_out**2) / divider)
 
+        if slow_down:
+            Td = (new_v - v_out)/acceleration
+        else:
+            Td = 0 #redundancja ale zostawmy
+
+        Ta = (new_v - v_in)/acceleration
+        Tc = Sc/new_v
+
+        time = Ta + Tc + Td
+
+        if desired_time:
+            return max(desired_time, time)
+        else:
+            return time
+
+    def plan_ptp_motion(self, start_pose, target_pose, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None, previous_tcp_speed = 0):
+        #przygotowanie danych
+        target_pose = unwrap_angles(target_pose, start_pose)
+
+        directions = [1 if target_pose[i] - start_pose[i] >= 0 else -1 for i in range(6)]
+
+        joints_diff_angles = [abs(target_pose[i] - start_pose[i]) for i in range(6)]
+
+        #wyznaczenie minimalnego czasu symulacji
+        joints_required_time = [0.0]*6
         for i in range(6):
-            if const_angle[i]<0:
-                const_angle[i] = 0
-                angle_speed[i] = math.sqrt((diff_angles[i]*acceleration + (initial_speed[i]**2 + final_speed[i]**2 *(1 if slow_down else 0))/2))
-            #dla else nic nie musimy robić
+            joints_required_time[i] = self.calculate_minimial_joint_time(joints_diff_angles[i], v_max, acceleration, v_in[i], v_out[i], slow_down, desired_time)
 
-        minimal_time = [0.0] * 6
-        for i in range(6):
-            if angle_speed[i] !=0:
-                minimal_time[i] = (angle_speed[i] - initial_speed[i])/acceleration + (angle_speed[i] - final_speed[i])/acceleration*(1 if slow_down else 0) + const_angle[i]/angle_speed[i]
+        simulation_time = max(joints_required_time)
+        simulation_time_index = joints_required_time.index(simulation_time)
 
-
-        simulation_time = max(minimal_time)
-        simulation_time_index = minimal_time.index(simulation_time)
-        simulation_steps = int(diff_angles[simulation_time_index]//self.SINGLE_STEP_ANGLE)
+        simulation_steps = math.ceil(joints_diff_angles[simulation_time_index]/self.SINGLE_STEP_ANGLE)
         simulation_step_time = simulation_time/simulation_steps
 
-        #----------------------------------------------------------------------------------#
-        # pierwsza cześć obliczeń z zeszytu #
+        # wyznaczenie prędkości docelowej dla każdej z osi - zgodnie ze wzorami matlab
 
-        # wzorki z matlab
-        if slow_down:
-            for i in range(6):
-                angle_speed[i] = (
-                    initial_speed[i]/2 
-                    + final_speed[i]/2 
+        joints_speed = [v_max] * 6
+
+        for i in range(6):
+            if slow_down:
+                joints_speed[i] = (
+                    v_in[i]/2 
+                    + v_out[i]/2 
                     + (acceleration * simulation_time)/2 
                     - (math.sqrt(
                         simulation_time**2 * acceleration**2 
-                        + 2*simulation_time * acceleration * initial_speed[i] 
-                        + 2*simulation_time * acceleration * final_speed[i] 
-                        - 4 * diff_angles[i] * acceleration 
-                        - initial_speed[i]**2 
-                        + 2 * initial_speed[i] * final_speed[i] 
-                        - final_speed[i] 
+                        + 2*simulation_time * acceleration * v_in[i] 
+                        + 2*simulation_time * acceleration * v_out[i] 
+                        - 4 * joints_diff_angles[i] * acceleration 
+                        - v_in[i]**2 
+                        + 2 * v_in[i] * v_out[i] 
+                        - v_out[i] 
                         )
                     )/2
                 )
 
-        else:
-            for i in range(6):
-                angle_speed[i] = (
-                    initial_speed[i]
+            else:
+                joints_speed[i] = (
+                    v_in[i]
                     - math.sqrt( acceleration * ( acceleration * simulation_time**2
-                        + 2 * initial_speed[i] * simulation_time
-                        - 2 * diff_angles[i]
+                        + 2 * v_in[i] * simulation_time
+                        - 2 * joints_diff_angles[i]
                         ))
                     + acceleration * simulation_time
                 )
 
 
         # commented values not used now - just for debugging purposes
-        # speed_up_distance   = [(angle_speed[i]**2 - initial_speed[i]**2)/(2*acceleration) for i in range(6)]
-        # speed_down_distance = [(angle_speed[i]**2 - final_speed[i]**2)/(2*acceleration) for i in range(6)]
+        # speed_up_distance   = [(joints_speed[i]**2 - v_in[i]**2)/(2*acceleration) for i in range(6)]
+        # speed_down_distance = [(joints_speed[i]**2 - v_out[i]**2)/(2*acceleration) for i in range(6)]
 
-        speed_up_time  = [(angle_speed[i] - initial_speed[i])/acceleration for i in range(6)]
+        speed_up_time  = [(joints_speed[i] - v_in[i])/acceleration for i in range(6)]
 
         speed_down_time = [0.0] * 6
         if slow_down:
-            speed_down_time = [(angle_speed[i] - final_speed[i])/acceleration for i in range(6)]
-        # const_time  = [(diff_angles[i] - speed_up_distance[i] - speed_down_distance[i])/angle_speed[i] if angle_speed[i]!=0 else 0 for i in range(6)]
+            speed_down_time = [(joints_speed[i] - v_out[i])/acceleration for i in range(6)]
+        # const_time  = [(joints_diff_angles[i] - speed_up_distance[i] - speed_down_distance[i])/joints_speed[i] if joints_speed[i]!=0 else 0 for i in range(6)]
     
 
-
+        #przygotowanie struktur wchodzących do ścieżki path
         timestamps = []
         tcp_profile = [[], []]
-        joint_speed_profiles = [[] for _ in range(6)]
+        joints_speed_profiles = [[] for _ in range(6)]
         joint_acceleration_profiles = [[] for _ in range(6)]
         angles_profile = [tuple(0 for _ in range(6))]
 
         interpolated_angle_table = [0.0] * 6
-
-
-        previous_joint_speeds = *initial_speed,
-        previous_angles = *current_angles,
-        previous_tcp_speed = 0.0
-
-        previous_pose = calculate_fk(*current_angles)
+        previous_joints_speeds = *v_in,
+        previous_angles = *start_pose,
+        previous_pose = calculate_fk(*start_pose)
 
         elapsed_time = 0.0
 
@@ -492,7 +503,7 @@ class kinematicManager:
             elapsed_time += simulation_step_time
 
             for i in range(6):
-                interpolated_angle_table[i] = current_angles[i] + directions[i] * self.calculate_spatium(elapsed_time, initial_speed[i], angle_speed[i], final_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i])
+                interpolated_angle_table[i] = start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], v_out[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i])
 
             if elapsed_time >= simulation_time - 0.001:
                 interpolated_angle_table = target_pose
@@ -506,16 +517,16 @@ class kinematicManager:
             tcp_profile[1].append((tcp_speed-previous_tcp_speed)/simulation_step_time/2)
             previous_tcp_speed = tcp_speed
 
-            joint_speeds = [abs(interpolated_angle_table[i] - previous_angles[i]) / simulation_step_time for i in range(6)]
+            joints_speeds = [abs(interpolated_angle_table[i] - previous_angles[i]) / simulation_step_time for i in range(6)]
             for i in range(6):
-                joint_speed_profiles[i].append(joint_speeds[i])
-                joint_acceleration_profiles[i].append((joint_speeds[i] - previous_joint_speeds[i]) / simulation_step_time / 2)
+                joints_speed_profiles[i].append(joints_speeds[i])
+                joint_acceleration_profiles[i].append((joints_speeds[i] - previous_joints_speeds[i]) / simulation_step_time / 2)
 
             angles_profile.append(tuple(interpolated_angle_table))
 
             previous_angles = tuple(interpolated_angle_table)
-            previous_joint_speeds = joint_speeds
+            previous_joints_speeds = joints_speeds
             previous_pose = interpolated_pose
 
-        return timestamps, tcp_profile, joint_speed_profiles, joint_acceleration_profiles, angles_profile
+        return timestamps, tcp_profile, joints_speed_profiles, joint_acceleration_profiles, angles_profile
 
