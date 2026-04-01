@@ -201,7 +201,7 @@ class kinematicManager:
                 self.wrapper.actual_angle_5[self.ROBOT_IK],
             )
 
-            self.path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, False)
+            self.path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True)
         
         if self.path is None:
             logger.debug("Motion planning failed, skipping movement")
@@ -356,27 +356,27 @@ class kinematicManager:
         # self.simulation_timer.start()
         # self.animate_movement()
 
-    def calculate_spatium (self,  elapsed_time, v_in, v_const, v_out, acc, duration, speed_up_time, speed_down_time):
+    def calculate_spatium (self,  elapsed_time, v_in, v_const, acc, duration, speed_up_time, speed_down_time):
         spatium = 0.0
 
-        #distance during acceleration phase
-        time = min(speed_up_time, elapsed_time)
-        spatium += v_in*time + acc*time**2/2
-        if elapsed_time <speed_up_time:
-            return spatium
-
-        time = 0.0
         const_time = duration - speed_up_time - speed_down_time
 
-        if elapsed_time > const_time + speed_up_time:
-            time = const_time
+        #speed_up
+        if elapsed_time<=speed_up_time:
+            return v_in*elapsed_time + acc*elapsed_time**2/2
         else:
-            time = elapsed_time - speed_up_time
-        spatium += v_const*time
+            spatium += v_in*speed_up_time + acc*speed_up_time**2/2
+            elapsed_time -= speed_up_time
 
-        if elapsed_time > const_time + speed_up_time:
-            time = elapsed_time - const_time - speed_up_time
-            spatium += v_const*time - acc*time**2/2
+        #const phase
+        if elapsed_time<const_time:
+            return spatium + v_const*elapsed_time
+        else:
+            spatium += v_const*const_time
+            elapsed_time -= const_time
+        
+        #deceleration
+        spatium += v_const*elapsed_time - acc*elapsed_time**2/2
 
         return spatium
 
@@ -451,20 +451,22 @@ class kinematicManager:
 
         for i in range(6):
             if slow_down:
+                sqrt_value = (
+                    simulation_time**2 * acceleration**2
+                    + 2*simulation_time * acceleration * v_in[i]
+                    + 2*simulation_time * acceleration * v_out[i]
+                    - 4 * joints_diff_angles[i] * acceleration
+                    - v_in[i]**2
+                    + 2 * v_in[i] * v_out[i]
+                    - v_out[i]
+                )
+                sqrt_value = round(sqrt_value, 9)
+
                 joints_speed[i] = (
                     v_in[i]/2 
                     + v_out[i]/2 
                     + (acceleration * simulation_time)/2 
-                    - (math.sqrt(
-                        simulation_time**2 * acceleration**2 
-                        + 2*simulation_time * acceleration * v_in[i] 
-                        + 2*simulation_time * acceleration * v_out[i] 
-                        - 4 * joints_diff_angles[i] * acceleration 
-                        - v_in[i]**2 
-                        + 2 * v_in[i] * v_out[i] 
-                        - v_out[i] 
-                        )
-                    )/2
+                    - (math.sqrt(sqrt_value))/2
                 )
 
             else:
@@ -505,7 +507,7 @@ class kinematicManager:
             elapsed_time += simulation_step_time
 
             for i in range(6):
-                interpolated_angle_table[i] = start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], v_out[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i])
+                interpolated_angle_table[i] = start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i])
 
             if elapsed_time >= round(simulation_time, 6):
                 interpolated_angle_table = target_pose
