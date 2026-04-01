@@ -388,6 +388,12 @@ class kinematicManager:
         Sc = 0
         Td = 0
 
+        if spatium == 0:
+            if desired_time:
+                return max(0.0, desired_time)
+            else:
+                return 0.0
+
         if slow_down:
             divider = 1
             Sd = (v_max**2 - v_out**2) / (2 * acceleration)
@@ -462,12 +468,19 @@ class kinematicManager:
                 )
 
             else:
+                #TODO: czy ten bład dalej występuje? dla krótkich odcinków wartość pod tym pierwiastkiem była ujemna
+                if acceleration * simulation_time**2 + 2 * v_in[i] * simulation_time - 2 * joints_diff_angles[i] <=0:
+                    zmienna_tmp = 10
+
                 joints_speed[i] = (
                     v_in[i]
-                    - math.sqrt( acceleration * ( acceleration * simulation_time**2
-                        + 2 * v_in[i] * simulation_time
-                        - 2 * joints_diff_angles[i]
-                        ))
+                    - math.sqrt( 
+                        acceleration * (
+                            acceleration * simulation_time**2
+                            + 2 * v_in[i] * simulation_time
+                            - 2 * joints_diff_angles[i]
+                        )
+                    )
                     + acceleration * simulation_time
                 )
 
