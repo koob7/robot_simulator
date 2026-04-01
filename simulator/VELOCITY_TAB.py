@@ -2,6 +2,25 @@ from PySide6 import QtCore, QtWidgets, QtGui
 
 from Wrapper import Wrapper
 
+class RenderWorker(QtCore.QObject):
+	finished = QtCore.Signal()
+    
+	def __init__(self, wrapper):
+		super().__init__()
+		self.wrapper = wrapper
+		self.next_timestamp = -1
+		self.running = True
+		self.minimized = False
+
+	@QtCore.Slot()
+	def run(self):
+		while self.running:
+			if not self.minimized:
+				self.wrapper.render_charts(self.next_timestamp)
+			QtCore.QThread.msleep(16)  # ~60 FPS
+
+	def stop(self):
+		self.running = False
 
 class VELOCITY_TAB(QtWidgets.QWidget):
 	def __init__(self):
@@ -18,22 +37,27 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 		self.chart_windows = [None] * self.CHART_COUNT
 		self.current_step = 0
 		self.steps_len = 0
-		self.time_elapsed = 0.0
 		self.duration = 0.0
-		self.minimized = False
-
 
 		for i in range (self.CHART_COUNT):
 			self.chart_windows[i] = QtWidgets.QWidget(self)
 			self.set_geometry(i)
 			self.wrapper.connect_chart(i, self.chart_windows[i].winId())
 
-		self.render_charts()
+		self.render_thread = QtCore.QThread()
+		self.render_worker = RenderWorker(self.wrapper)
+		self.render_worker.moveToThread(self.render_thread)
+		self.render_thread.started.connect(self.render_worker.run)
+		self.render_worker.minimized = False
 
-		self.render_timer = QtCore.QTimer(self)
-		self.render_timer.setInterval(16)
-		self.render_timer.timeout.connect(self.render_charts)
-		self.render_timer.start()
+		self.render_thread.start()
+
+	def closeEvent(self, event):
+		self.render_worker.stop()
+		self.render_thread.quit()
+		self.render_thread.wait()
+		event.accept()
+
 
 	def set_geometry(self, index):
 		height = self.height()
@@ -43,20 +67,10 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 
 		self.chart_windows[index].setGeometry(10, self.chart_space + (chart_height + self.chart_space)*index, self.width()-20, chart_height)
 
-	def render_charts(self):
-		if self.minimized:
-			return
-		if (self.time_elapsed >= self.duration):
-			self.wrapper.render_charts(-1)
-			return
-		self.wrapper.render_charts(self.time_elapsed)
-
 	def resizeEvent(self, event):
 		width = self.width()
 		for i in range(self.CHART_COUNT):
 			self.set_geometry(i)
-			
-		self.render_charts()
 
 		event.accept()
 
@@ -64,10 +78,13 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 		if widget != self:
 			return
 
-		self.minimized = minimized
+		self.render_worker.minimized = minimized
 
 	def update_progress(self, time_elapsed):
-		self.time_elapsed = time_elapsed
+		if time_elapsed >= self.duration:
+			self.render_worker.next_timestamp = -1
+		else:
+			self.render_worker.next_timestamp = time_elapsed
 
 	def update_velocity_profiles(self, velocity_profile, length, max_tcp_speed, max_tcp_acceleration, max_joint_speed, max_joint_acceleration, duration):
 		self.steps_len = length
