@@ -201,7 +201,7 @@ class kinematicManager:
                 self.wrapper.actual_angle_5[self.ROBOT_IK],
             )
 
-            self.path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True)
+            self.path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, False)
         
         if self.path is None:
             logger.debug("Motion planning failed, skipping movement")
@@ -395,14 +395,14 @@ class kinematicManager:
                 return 0.0
 
         if slow_down:
-            divider = 1
+            divider = 2
             Sd = (v_max**2 - v_out**2) / (2 * acceleration)
             #V_out - zostaje bez zmian
         
         else:
             #Sd - już ustawione na 0
             v_out = 0 #redundancja ale zostawmy
-            divider = 2
+            divider = 1
         
         if spatium - Sa - Sd <=0:
             Sc = 0 # redundancja ale zostawmy
@@ -468,21 +468,10 @@ class kinematicManager:
                 )
 
             else:
-                #TODO: czy ten bład dalej występuje? dla krótkich odcinków wartość pod tym pierwiastkiem była ujemna
-                if acceleration * simulation_time**2 + 2 * v_in[i] * simulation_time - 2 * joints_diff_angles[i] <=0:
-                    zmienna_tmp = 10
+                sqrt_value = acceleration*(acceleration * simulation_time**2 + 2 * v_in[i] * simulation_time - 2 * joints_diff_angles[i])
+                sqrt_value = round(sqrt_value, 9)
 
-                joints_speed[i] = (
-                    v_in[i]
-                    - math.sqrt( 
-                        acceleration * (
-                            acceleration * simulation_time**2
-                            + 2 * v_in[i] * simulation_time
-                            - 2 * joints_diff_angles[i]
-                        )
-                    )
-                    + acceleration * simulation_time
-                )
+                joints_speed[i] = (v_in[i] - math.sqrt(sqrt_value) + acceleration * simulation_time)
 
 
         # commented values not used now - just for debugging purposes
@@ -518,7 +507,7 @@ class kinematicManager:
             for i in range(6):
                 interpolated_angle_table[i] = start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], v_out[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i])
 
-            if elapsed_time >= simulation_time - 0.001:
+            if elapsed_time >= round(simulation_time, 6):
                 interpolated_angle_table = target_pose
 
             interpolated_pose = calculate_fk(*interpolated_angle_table)
