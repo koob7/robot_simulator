@@ -2,6 +2,9 @@
 import math
 import sys
 import os
+import threading
+
+_DLL_CALL_LOCK = threading.RLock()
 
 def resource_path(relative_path):
 	if hasattr(sys, '_MEIPASS'):
@@ -37,23 +40,27 @@ class Wrapper:
 		self.actual_angle_5 = []
 
 	def connect_chart(self, chart_id, hwnd):
-		self.dll.connect_chart(chart_id, hwnd)
+		with _DLL_CALL_LOCK:
+			self.dll.connect_chart(chart_id, hwnd)
 
 	# not supported for now - its easier to don't refresh it
 	# def close_chart(self, chart_id):
 	# 	self.dll.close_chart(chart_id)
 
-	def update_timestamps(self, timestamps_array, duration, length):
+	def update_timestamps(self, timestamps_array, duration, data_len):
 		arr_timestamps = (c_float * len(timestamps_array))(*timestamps_array)
-		self.dll.update_timestamps(arr_timestamps, duration, length)
+		with _DLL_CALL_LOCK:
+			self.dll.update_timestamps(arr_timestamps, duration, data_len)
 
 	def update_chart_data(self, chart_id, data_speed_array, data_acceleration_array, data_len, max_speed_value, max_acceleration_value):
 		arr_speed = (c_float * len(data_speed_array))(*data_speed_array)
 		arr_acceleration = (c_float * len(data_acceleration_array))(*data_acceleration_array)
-		self.dll.update_chart_data(chart_id, arr_speed, arr_acceleration, data_len, max_speed_value, max_acceleration_value)
+		with _DLL_CALL_LOCK:
+			self.dll.update_chart_data(chart_id, arr_speed, arr_acceleration, data_len, max_speed_value, max_acceleration_value)
 
 	def render_charts(self, progress):
-		self.dll.render_charts(progress)
+		with _DLL_CALL_LOCK:
+			self.dll.render_charts(progress)
 
 	def _ensure_idx(self, idx):
 		if idx < 0:
@@ -76,22 +83,26 @@ class Wrapper:
 				arr.extend([0.0] * missing)
 
 	def Initialize(self, hwnd):
-		self.dll.Initialize(hwnd)
+		with _DLL_CALL_LOCK:
+			self.dll.Initialize(hwnd)
 
 	# unused - now it caluclates automatically
 	# def CalcProjectionMatrix(self, res_x, res_y):
 	# 	self.dll.CalcProjectionMatrix(res_x, res_y)
 
 	def SetCamera(self, x, y, z, angle_x, angle_y):
-		self.dll.SetCamera(x, y, z, angle_x, angle_y)
+		with _DLL_CALL_LOCK:
+			self.dll.SetCamera(x, y, z, angle_x, angle_y)
 
 	def InitializeScene(self):
 		shaders_path = resource_path("opengl_source/shaders")
 		models_path = resource_path("3d_models")
-		self.dll.InitializeScene(shaders_path.encode(), models_path.encode())
+		with _DLL_CALL_LOCK:
+			self.dll.InitializeScene(shaders_path.encode(), models_path.encode())
 
 	def _RobotMove(self, idx: int, x: float, y: float, z: float, angle_0: float, angle_1: float, angle_2: float, angle_3: float, angle_4: float, angle_5: float):
-		self.dll.RobotMove(idx, x/10, y/10, z/10, math.radians(angle_0)-math.pi/2, math.radians(angle_1)-math.pi/2, math.radians(angle_2)-math.pi/2, math.radians(angle_3)-math.pi/2, math.radians(angle_4), math.radians(angle_5))
+		with _DLL_CALL_LOCK:
+			self.dll.RobotMove(idx, x/10, y/10, z/10, math.radians(angle_0)-math.pi/2, math.radians(angle_1)-math.pi/2, math.radians(angle_2)-math.pi/2, math.radians(angle_3)-math.pi/2, math.radians(angle_4), math.radians(angle_5))
 
 	def moveRobot(self, idx: int, x: float, y: float, z: float):
 		self._ensure_idx(idx)
@@ -135,4 +146,5 @@ class Wrapper:
 		)
 
 	def Render(self):
-		self.dll.Render()
+		with _DLL_CALL_LOCK:
+			self.dll.Render()
