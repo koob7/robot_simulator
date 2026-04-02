@@ -7,6 +7,7 @@ import logging
 import math
 
 from RobotViewport import MovementType
+from pathStruct import pathStruct
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class kinematicManager:
         self.acceptable_simulated_errors = [ValidErrorCode.VALID, ValidErrorCode.WRONG_ANGLES, ValidErrorCode.TARGET_POSE_TOO_CLOSE, ValidErrorCode.WRIST_POSE_TOO_CLOSE]
 
 
-        self.path = []
+        self.path = pathStruct()
         self.path_steps = 0
         self.current_step_index = 0
         self.simulation_timer = QtCore.QTimer()
@@ -112,27 +113,27 @@ class kinematicManager:
         self.plan_motion(target_pose, movement=MovementType.LINEAR, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
 
     def animate_movement(self):
-        if not self.path or self.current_step_index >= len(self.path[0]):
+        if self.path.get_length() == 0 or self.current_step_index >= self.path.get_length():
             self.simulation_timer.stop()
             self.robot_viewport.status_changed_callback("Simulation completed")
             if hasattr(self, 'animation_end_callback') and self.animation_end_callback:
                 self.animation_end_callback()
             return
         
-        angles = self.path[4][self.current_step_index]
-        interval_ms = self.path[0][self.current_step_index] * 1000
-        velocity = self.path[1][0][self.current_step_index]
+        angles = self.path.joints_angles[self.current_step_index]
+        interval_ms = self.path.timestamps[self.current_step_index] * 1000
+        velocity = self.path.tcp_speed[self.current_step_index]
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
         self.simulation_timer.setInterval(int(interval_ms))
         self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
 
-        self.elapsed_time += self.path[0][self.current_step_index]
+        self.elapsed_time += self.path.timestamps[self.current_step_index]
         self.current_step_index += 1
         self.velocity_tab.update_progress(self.elapsed_time)
 
     def abort_motion(self):
         self.simulation_timer.stop()
-        self.path = []
+        self.path.clear()
         self.robot_viewport.status_changed_callback("Motion aborted")
 
     def fk_released_callback(self, _value=None):
@@ -178,7 +179,7 @@ class kinematicManager:
         if movement is None:
             movement = self.robot_viewport.get_current_movement_type()
 
-        self.path = []
+        self.path.clear()
         self.current_step_index = 0
         self.elapsed_time = 0.0
 
@@ -201,32 +202,31 @@ class kinematicManager:
                 self.wrapper.actual_angle_5[self.ROBOT_IK],
             )
 
-            self.path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True)
+            self.path.copy_from(self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True))
         
-        if self.path is None:
+        if self.path.get_length() == 0:
             logger.debug("Motion planning failed, skipping movement")
             return
 
         self.animation_end_callback = callback
 
-        self.simulation_duration = sum(self.path[0]) #path[0] contains timestamps for each step
+        self.simulation_duration = sum(self.path.timestamps) #path.timestamps contains timestamps for each step
 
-        max_tcp_acceleration = max(self.path[1][1])
-        min_tcp_acceleration = min(self.path[1][1])
+        max_tcp_acceleration = max(self.path.tcp_acceleration)
+        min_tcp_acceleration = min(self.path.tcp_acceleration)
 
         tcp_divider = max(abs(max_tcp_acceleration), abs(min_tcp_acceleration))
 
-        max_tcp_speed = max(self.path[1][0])
+        max_tcp_speed = max(self.path.tcp_speed)
 
-        for i in range(len(self.path[1][1])):
-            self.path[1][1][i] = self.path[1][1][i] + tcp_divider
+        for i in range(self.path.get_length()):
+            self.path.tcp_acceleration[i] = self.path.tcp_acceleration[i] + tcp_divider
 
-        for i in range(len(self.path[3])):
-            for j in range(len(self.path[3][i])):
-                self.path[3][i][j] = self.path[3][i][j] + MAX_ANGULAR_ACCELERATION
+        for i in range(len(self.path.joints_acceleration)):
+            for j in range(self.path.get_length()):
+                self.path.joints_acceleration[i][j] = self.path.joints_acceleration[i][j] + MAX_ANGULAR_ACCELERATION
 
-        velocity_profile = [self.path[0], self.path[1], self.path[2], self.path[3]]
-        self.velocity_tab.update_velocity_profiles(velocity_profile, len(self.path[0]), max_tcp_speed, tcp_divider*2, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION*2, self.simulation_duration)
+        self.velocity_tab.update_velocity_profiles( self.path, max_tcp_speed, tcp_divider*2, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION*2, self.simulation_duration)
 
         self.simulation_timer.start()
         self.animate_movement()
@@ -382,6 +382,8 @@ class kinematicManager:
 
 
     def calculate_minimial_joint_time (self, spatium, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None):
+        #zogdnie z diagramem draw.io
+
         Sa = (v_max**2 - v_in**2) / (2 * acceleration)
         divider = 0
         Sd = 0
@@ -489,48 +491,39 @@ class kinematicManager:
     
 
         #przygotowanie struktur wchodzących do ścieżki path
-        timestamps = []
-        tcp_profile = [[], []]
-        joints_speed_profiles = [[] for _ in range(6)]
-        joint_acceleration_profiles = [[] for _ in range(6)]
-        angles_profile = [tuple(0 for _ in range(6))]
+        new_path: pathStruct = pathStruct()
 
-        interpolated_angle_table = [0.0] * 6
-        previous_joints_speeds = *v_in,
-        previous_angles = *start_pose,
-        previous_pose = calculate_fk(*start_pose)
+        #nie możemy tutaj skorzystać z poprzedniego 
+        previous_joints_speeds = v_in
+        previous_joints_angles = start_pose
+        previous_pose = tuple(calculate_fk(*start_pose))
 
         elapsed_time = 0.0
 
         for step in range(simulation_steps):
 
             elapsed_time += simulation_step_time
-
-            for i in range(6):
-                interpolated_angle_table[i] = start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i])
+        
+            interpolated_joint_angles = [start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i]) for i in range(6)]
 
             if elapsed_time >= round(simulation_time, 6):
-                interpolated_angle_table = target_pose
+                interpolated_joint_angles = target_pose
 
-            interpolated_pose = calculate_fk(*interpolated_angle_table)
+            interpolated_pose = calculate_fk(*interpolated_joint_angles)
             interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
-            timestamps.append(simulation_step_time)
 
             tcp_speed = abs(interpolated_distance)/simulation_step_time
-            tcp_profile[0].append(tcp_speed)
-            tcp_profile[1].append((tcp_speed-previous_tcp_speed)/simulation_step_time/2)
+            tcp_acceleration = (tcp_speed - previous_tcp_speed)/simulation_step_time/2 #0 is in the midle of chart so values have to be scaled by 2
+
+            joints_speeds = [abs(interpolated_joint_angles[i] - previous_joints_angles[i]) / simulation_step_time for i in range(6)]
+            joints_accelerations = [(joints_speeds[i] - previous_joints_speeds[i]) / simulation_step_time for i in range(6)]
+
+            new_path.append(simulation_step_time, tcp_speed, tcp_acceleration, interpolated_pose, joints_speeds, joints_accelerations, interpolated_joint_angles)
+
             previous_tcp_speed = tcp_speed
-
-            joints_speeds = [abs(interpolated_angle_table[i] - previous_angles[i]) / simulation_step_time for i in range(6)]
-            for i in range(6):
-                joints_speed_profiles[i].append(joints_speeds[i])
-                joint_acceleration_profiles[i].append((joints_speeds[i] - previous_joints_speeds[i]) / simulation_step_time / 2)
-
-            angles_profile.append(tuple(interpolated_angle_table))
-
-            previous_angles = tuple(interpolated_angle_table)
-            previous_joints_speeds = joints_speeds
             previous_pose = interpolated_pose
 
-        return timestamps, tcp_profile, joints_speed_profiles, joint_acceleration_profiles, angles_profile
-
+            previous_joints_speeds = joints_speeds
+            previous_joints_angles = interpolated_joint_angles
+            
+        return new_path

@@ -511,7 +511,7 @@ class ProgramSimulation(QtWidgets.QWidget):
         x, y, z = desired_command.x, desired_command.y, desired_command.z
         angle_0, angle_1, angle_2 = desired_command.angle_0, desired_command.angle_1, desired_command.angle_2
 
-        position_touple = (x, y, z, angle_0, angle_1, angle_2)
+        position_tuple = (x, y, z, angle_0, angle_1, angle_2)
 
         speed = desired_command.speed
         acceleration = desired_command.acceleration
@@ -519,11 +519,11 @@ class ProgramSimulation(QtWidgets.QWidget):
         move_type = desired_command.movement_type
 
         if move_type == MovementType.LINEAR:
-            self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
+            self.kinematic_manager.plan_motion(position_tuple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
 
         elif move_type == MovementType.PTP:
-            position_touple = calculate_ik(*position_touple)
-            self.kinematic_manager.plan_motion(position_touple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
+            position_tuple = calculate_ik(*position_tuple)
+            self.kinematic_manager.plan_motion(position_tuple, speed=speed, acceleration=acceleration, movement=move_type,set_EDGE_ROBOT = True ,callback=self.handle_next)
 
     def handle_move_up(self):
         current_row = self.command_view.currentIndex().row()

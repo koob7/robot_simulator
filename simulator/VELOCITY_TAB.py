@@ -1,6 +1,7 @@
 from PySide6 import QtCore, QtWidgets, QtGui
 
 from Wrapper import Wrapper
+from pathStruct import pathStruct
 
 class RenderWorker(QtCore.QObject):
 	finished = QtCore.Signal()
@@ -86,16 +87,16 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 		else:
 			self.render_worker.next_timestamp = time_elapsed
 
-	def update_velocity_profiles(self, velocity_profile, length, max_tcp_speed, max_tcp_acceleration, max_joint_speed, max_joint_acceleration, duration):
-		self.steps_len = length
+	def update_velocity_profiles(self, path: pathStruct,  max_tcp_speed, max_tcp_acceleration, max_joint_speed, max_joint_acceleration, duration):
+		self.steps_len = path.get_length()
 		self.duration = duration
 		
-		self.wrapper.update_chart_data(int(0), velocity_profile[1][0], velocity_profile[1][1], int(self.steps_len), int(max_tcp_speed), int(max_tcp_acceleration))
+		self.wrapper.update_chart_data(int(0), path.tcp_speed, path.tcp_acceleration, int(self.steps_len), int(max_tcp_speed), int(max_tcp_acceleration))
 
 		for i in range(6):
-			self.wrapper.update_chart_data(int(i+1), velocity_profile[2][i], velocity_profile[3][i], int(self.steps_len), int(max_joint_speed), int(max_joint_acceleration))
+			self.wrapper.update_chart_data(int(i+1), path.joints_speed[i], path.joints_acceleration[i], int(self.steps_len), int(max_joint_speed), int(max_joint_acceleration))
 
-		self.wrapper.update_timestamps(velocity_profile[0], self.duration, int(self.steps_len))
+		self.wrapper.update_timestamps(path.timestamps, self.duration, int(self.steps_len))
 
 	def update_chart_data(self, index, data_speed, data_acceleration, data_len, max_speed_value, max_acceleration_value):
 		self.wrapper.update_chart_data(index, data_speed, data_acceleration, data_len, max_speed_value, max_acceleration_value)
