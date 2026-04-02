@@ -512,6 +512,12 @@ class kinematicManager:
             interpolated_pose = calculate_fk(*interpolated_joint_angles)
             interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
 
+            error_code = valid_pose(*interpolated_pose) 
+            if error_code != ValidErrorCode.VALID:
+                logger.debug(f"Invalid pose at step {step}, skipping movement")
+                self.robot_viewport.status_changed_callback(error_code.text())
+                return pathStruct()
+
             tcp_speed = abs(interpolated_distance)/simulation_step_time
             tcp_acceleration = (tcp_speed - previous_tcp_speed)/simulation_step_time/2 #0 is in the midle of chart so values have to be scaled by 2
 

@@ -26,6 +26,9 @@ class pathStruct:
 
         self.joints_angles.append(tuple(joints_angles))
 
+    def if_empty(self):
+        return len(self.timestamps) == 0
+
     def clear(self):
         self.timestamps.clear()
         self.tcp_speed.clear()
