@@ -9,7 +9,7 @@ class pathStruct:
         self.tcp_position = []
         self.joints_speed= [[] for _ in range(6)]
         self.joints_acceleration = [[] for _ in range(6)]
-        self.joints_angles = [tuple(0 for _ in range(6))]
+        self.joints_angles = []
 
     def append(self, timestamp, tcp_speed, tcp_acceleration, tcp_position, joints_speed, joints_acceleration, joints_angles):
         self.timestamps.append(timestamp)

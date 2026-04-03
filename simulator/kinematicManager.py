@@ -39,8 +39,8 @@ class kinematicManager:
         self.ANGLE_SPEED = MAX_ANGULAR_SPEED
         self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
 
-        self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
-        self.SINGLE_STEP_ANGLE = 0.2 # degrees (for simple linear interpolation in joint space)
+        self.SINGLE_STEP_DISTANCE = 0.5  # mm (for simple linear interpolation)
+        self.SINGLE_STEP_ANGLE = 0.5 # degrees (for simple linear interpolation in joint space)
 
         self.current_step_index = 0
         self.elapsed_time = 0.0
@@ -191,7 +191,8 @@ class kinematicManager:
                 speed = self.ANGLE_SPEED
                 acceleration = self.ANGLE_ACCELERATION
         if movement == MovementType.LINEAR:
-            self.path = self.plan_linear_motion(target_pose, speed, acceleration)
+            self.path.copy_from(self.plan_linear_motion(target_pose, speed, acceleration))
+
         elif movement == MovementType.PTP:
             current_angles = (
                 self.wrapper.actual_angle_0[self.ROBOT_IK],
@@ -231,130 +232,115 @@ class kinematicManager:
         self.simulation_timer.start()
         self.animate_movement()
 
+    def calculate_time (self,  elapsed_distance, vel, acc, distance, speed_up_distance, speed_down_distance):
+        time = 0.0
+
+        const_distance = distance - speed_up_distance - speed_down_distance
+
+        #speed_up
+        if elapsed_distance<=speed_up_distance:
+            return math.sqrt((2*elapsed_distance)/acc)
+        else:
+            time += math.sqrt((2*speed_up_distance)/acc)
+            elapsed_distance -= speed_up_distance
+
+        #const phase
+        if elapsed_distance<const_distance:
+            return time +  elapsed_distance / vel
+        else:
+            time += const_distance / vel
+            elapsed_distance -= const_distance
+        
+        #deceleration
+        time += (-vel + math.sqrt(vel**2 - 2*(acc*-1)*elapsed_distance))/(acc*-1)
+
+        return time
 
 
     def plan_linear_motion (self, target_pose, speed , acceleration):
-        return None
-        # current_angles = (
-        #     self.wrapper.actual_angle_0[self.ROBOT_IK],
-        #     self.wrapper.actual_angle_1[self.ROBOT_IK],
-        #     self.wrapper.actual_angle_2[self.ROBOT_IK],
-        #     self.wrapper.actual_angle_3[self.ROBOT_IK],
-        #     self.wrapper.actual_angle_4[self.ROBOT_IK],
-        #     self.wrapper.actual_angle_5[self.ROBOT_IK],
-        # )
+        current_angles = (
+            self.wrapper.actual_angle_0[self.ROBOT_IK],
+            self.wrapper.actual_angle_1[self.ROBOT_IK],
+            self.wrapper.actual_angle_2[self.ROBOT_IK],
+            self.wrapper.actual_angle_3[self.ROBOT_IK],
+            self.wrapper.actual_angle_4[self.ROBOT_IK],
+            self.wrapper.actual_angle_5[self.ROBOT_IK],
+        )
 
-        # current_pose = calculate_fk(*current_angles)
+        current_pose = calculate_fk(*current_angles)
 
-        # # Distance in Cartesian space
-        # linear_distance = math.sqrt(
-        #     sum((target_pose[i] - current_pose[i]) ** 2 for i in range(3))
-        # )
+        # Distance in Cartesian space
+        linear_distance = math.sqrt(
+            sum((target_pose[i] - current_pose[i]) ** 2 for i in range(3))
+        )
 
 
-        # if linear_distance < 0.1:
-        #     logger.debug("very small movement, temporary skip")
-        #     self.simulation_timer.start()
-        #     self.animate_movement() 
-        #     return
+        if linear_distance < 0.1:
+            logger.debug("very small movement, move as PTP")
+            desired_angles = calculate_ik(*target_pose)
+            unwrapped_angles = unwrap_angles(desired_angles, current_angles)
+            return self.plan_ptp_motion(current_angles, unwrapped_angles, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION, [0.0]*6, [0.0]*6, True)
         
-        # step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)
+        step_number = math.ceil(linear_distance / self.SINGLE_STEP_DISTANCE)
+        single_step_distance = linear_distance/step_number
 
-        # forward_path = []
-        # velocity_profile = [[], [], [], [], [], [], [], [] ,[], [], [], [], [], []]
+        #przygotowanie struktur wchodzących do ścieżki path
+        new_path: pathStruct = pathStruct()
 
-        # previous_angles = current_angles
-        # previous_pose = current_pose
-        # previous_joints_speed = [0.0] * 6
-        # previous_tcp_speed = 0.0
+        previous_tcp_speed = 0.0
+        previous_joints_speeds = [0 for _ in range(6)]
+        previous_joints_angles = current_angles
+        previous_pose = tuple(current_pose)
+        previous_pose_time = 0.0
+        elapsed_distance = 0.0
+        slow_down = False
 
-        # speed_up_distance = speed**2/(2*acceleration) #distance needed to reach target velocity with defined acceleration
-        # speed_up_steps = math.ceil(speed_up_distance/self.SINGLE_STEP_DISTANCE) #number of steps needed to reach target velocity with defined acceleration
+        speed_up_distance = speed**2/(2*acceleration) #distance needed to reach target velocity with defined acceleration
 
-        # if (speed_up_steps>step_number/2):
-        #     speed_up_steps = math.ceil(step_number/2)
+        if (speed_up_distance>linear_distance/2):
+            speed_up_distance = linear_distance/2
 
-        # for step in range(1, step_number+1):
+        speed_down_distance = speed_up_distance
 
-        #     interpolated_pose = interpolate_pose(current_pose, target_pose, step/step_number)
-        #     interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
+        for step in range(1, step_number+1):
 
-        #     if step<= speed_up_steps:
-        #         logger.debug("acceleration phase")
-        #         time = math.sqrt((2*step*self.SINGLE_STEP_DISTANCE)/acceleration) - math.sqrt((2*(step-1)*self.SINGLE_STEP_DISTANCE)/acceleration)
+            #czy tutaj jednak nie powinniśmy korzystać z jakiegoś wzoru na prostą i przesuwania sie o dystans
+            # re - to chyba właśnie teraz robimy :D
+            elapsed_distance += single_step_distance
 
-        #     elif step>= step_number - speed_up_steps:
-        #         logger.debug("deceleration phase")
-        #         remaining_steps = step_number - step + 1
-        #         time = math.sqrt((2*remaining_steps*self.SINGLE_STEP_DISTANCE)/acceleration) - math.sqrt((2*(remaining_steps-1)*self.SINGLE_STEP_DISTANCE)/acceleration)
+            interpolated_pose = interpolate_pose(current_pose, target_pose, step/step_number)
+            wrappped_interpolated_joint_angles =calculate_ik(*interpolated_pose)
+            interpolated_joints_angles = unwrap_angles(wrappped_interpolated_joint_angles, previous_joints_angles)
+            interpolated_pose_time = self.calculate_time(elapsed_distance, speed, acceleration, linear_distance, speed_up_distance, speed_down_distance)
 
-        #     elif step>speed_up_steps and step<(step_number - speed_up_steps):
-        #         logger.debug("constant phase")
-        #         time  = interpolated_distance/speed
-            
-    
-        #     error_code = valid_pose(*interpolated_pose) 
-        #     if error_code != ValidErrorCode.VALID:
-        #         logger.debug(f"Invalid pose at step {step}, skipping movement")
-        #         self.robot_viewport.status_changed_callback(error_code.text())
-        #         self.simulation_timer.stop()
-        #         self.path = []
-        #         return
+            time_diff = interpolated_pose_time - previous_pose_time
 
-        #     tmp =  calculate_ik(*interpolated_pose)
-        #     tmp = unwrap_angles(tmp, previous_angles)    
+            error_code = valid_pose(*interpolated_pose) 
+            if error_code != ValidErrorCode.VALID:
+                logger.debug(f"Invalid pose at step {step}, skipping movement")
+                self.robot_viewport.status_changed_callback(error_code.text())
+                return new_path.clear()
 
+            # def plan_ptp_motion(self, start_pose, target_pose, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None, previous_tcp_speed = 0):
+
+            if (step == step_number):
+                slow_down = True
+
+            step_path = self.plan_ptp_motion(previous_joints_angles, interpolated_joints_angles, self.ANGLE_SPEED, self.ANGLE_ACCELERATION, previous_joints_speeds, [0.0]*6, slow_down, time_diff, previous_tcp_speed)           
+
+            new_path.sum_paths(step_path)
 
 
-        #     angular_speeds = [
-        #         abs(tmp[i] - previous_angles[i]) / time
-        #         for i in range(6)
-        #     ]
+            previous_tcp_speed = step_path.tcp_speed[-1]
+            previous_joints_speeds = [step_path.joints_speed[i][-1] for i in range(6)]
+            previous_joints_angles = interpolated_joints_angles
+            previous_pose = interpolated_pose
+            previous_pose_time = interpolated_pose_time
 
-        #     angular_speed_limit = valid_max_angular_speed(previous_angles, tmp, time)
-        #     time*= angular_speed_limit
+        return new_path
 
-        #     angular_speeds = [
-        #         abs(tmp[i] - previous_angles[i]) / time
-        #         for i in range(6)
-        #     ]
 
-            
-        #     angular_acceleration_limit = valid_max_angular_accelaration(previous_joints_speed, angular_speeds, time)
-        #     time *= angular_acceleration_limit
-            
-        #     angular_speeds = [
-        #         abs(tmp[i] - previous_angles[i]) / time
-        #         for i in range(6)
-        #     ]
-
-        #     for i in range (6):
-        #         velocity_profile[i*2 + 3].append((angular_speeds[i] - previous_joints_speed[i]) / time / 2 + MAX_ANGULAR_ACCELERATION/2)
-
-        #     for i in range(6):
-        #         velocity_profile[i*2 + 2].append(angular_speeds[i])
-
-        #     tcp_speed = interpolated_distance/time
-
-        #     velocity_profile[0].append(tcp_speed)
-        #     velocity_profile[1].append((tcp_speed - previous_tcp_speed)/time/2 + acceleration/2)
-
-        #     forward_path.append((time, tmp, tcp_speed))
-
-        #     previous_angles = tmp
-        #     previous_pose = interpolated_pose       
-        #     previous_joints_speed = angular_speeds
-        #     previous_tcp_speed = tcp_speed         
-
-        # self.path  = forward_path
-        # self.path_steps = step_number
-        # self.current_step_index = 0
-
-        # self.velocity_tab.update_velocity_profiles(velocity_profile, step_number, speed, acceleration, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION)
-        # self.velocity_tab.update_progress(0)
-
-        # self.simulation_timer.start()
-        # self.animate_movement()
+  
 
     def calculate_spatium (self,  elapsed_time, v_in, v_const, acc, duration, speed_up_time, speed_down_time):
         spatium = 0.0
@@ -381,7 +367,7 @@ class kinematicManager:
         return spatium
 
 
-    def calculate_minimial_joint_time (self, spatium, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None):
+    def calculate_minimial_joint_time (self, spatium, v_max, acceleration, v_in, v_out, slow_down: bool):
         #zogdnie z diagramem draw.io
 
         Sa = (v_max**2 - v_in**2) / (2 * acceleration)
@@ -423,14 +409,17 @@ class kinematicManager:
 
         time = Ta + Tc + Td
 
-        if desired_time:
-            return max(desired_time, time)
-        else:
-            return time
+        return time
 
     def plan_ptp_motion(self, start_pose, target_pose, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None, previous_tcp_speed = 0):
         #przygotowanie danych
-        target_pose = unwrap_angles(target_pose, start_pose)
+        if v_max > MAX_ANGULAR_SPEED:
+            logger.info(f"Requested speed {v_max} exceeds maximum angular speed, capping to {MAX_ANGULAR_SPEED}")
+            v_max = MAX_ANGULAR_SPEED
+        
+        if acceleration > MAX_ANGULAR_ACCELERATION:
+            logger.info(f"Requested acceleration {acceleration} exceeds maximum angular acceleration, capping to {MAX_ANGULAR_ACCELERATION}")
+            acceleration = MAX_ANGULAR_ACCELERATION
 
         directions = [1 if target_pose[i] - start_pose[i] >= 0 else -1 for i in range(6)]
 
@@ -439,10 +428,13 @@ class kinematicManager:
         #wyznaczenie minimalnego czasu symulacji
         joints_required_time = [0.0]*6
         for i in range(6):
-            joints_required_time[i] = self.calculate_minimial_joint_time(joints_diff_angles[i], v_max, acceleration, v_in[i], v_out[i], slow_down, desired_time)
+            joints_required_time[i] = self.calculate_minimial_joint_time(joints_diff_angles[i], v_max, acceleration, v_in[i], v_out[i], slow_down)
 
+        #desired time is already considered
         simulation_time = max(joints_required_time)
         simulation_time_index = joints_required_time.index(simulation_time)
+        if desired_time:
+            simulation_time = max(simulation_time, desired_time)
 
         simulation_steps = math.ceil(joints_diff_angles[simulation_time_index]/self.SINGLE_STEP_ANGLE)
         simulation_step_time = simulation_time/simulation_steps
@@ -493,7 +485,7 @@ class kinematicManager:
         #przygotowanie struktur wchodzących do ścieżki path
         new_path: pathStruct = pathStruct()
 
-        #nie możemy tutaj skorzystać z poprzedniego 
+        #previous_tcp_speed is passed as argument to function
         previous_joints_speeds = v_in
         previous_joints_angles = start_pose
         previous_pose = tuple(calculate_fk(*start_pose))
