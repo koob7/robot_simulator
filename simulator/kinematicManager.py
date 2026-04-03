@@ -39,8 +39,8 @@ class kinematicManager:
         self.ANGLE_SPEED = MAX_ANGULAR_SPEED
         self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
 
-        self.SINGLE_STEP_DISTANCE = 0.5  # mm (for simple linear interpolation)
-        self.SINGLE_STEP_ANGLE = 0.5 # degrees (for simple linear interpolation in joint space)
+        self.SINGLE_STEP_DISTANCE = 0.2  # mm (for simple linear interpolation)
+        self.SINGLE_STEP_ANGLE = 0.2 # degrees (for simple linear interpolation in joint space)
 
         self.current_step_index = 0
         self.elapsed_time = 0.0
@@ -251,11 +251,17 @@ class kinematicManager:
             time += const_distance / vel
             elapsed_distance -= const_distance
         
-        #deceleration
-        time += (-vel + math.sqrt(vel**2 - 2*(acc*-1)*elapsed_distance))/(acc*-1)
+        if elapsed_distance<0:
+            return time
+
+        #deceleration  (vel + (vel^2 - 2*acc*spatium)^(1/2))/acc
+        sqrt_value = vel**2 - 2*acc*elapsed_distance
+        sqrt_value = round(sqrt_value, 6)
+        if sqrt_value<0:
+            tmp = 10
+        time += (vel - math.sqrt(sqrt_value))/acc
 
         return time
-
 
     def plan_linear_motion (self, target_pose, speed , acceleration):
         current_angles = (
@@ -313,7 +319,7 @@ class kinematicManager:
             interpolated_joints_angles = unwrap_angles(wrappped_interpolated_joint_angles, previous_joints_angles)
             interpolated_pose_time = self.calculate_time(elapsed_distance, speed, acceleration, linear_distance, speed_up_distance, speed_down_distance)
 
-            time_diff = interpolated_pose_time - previous_pose_time
+            time_diff = abs(interpolated_pose_time - previous_pose_time)
 
             error_code = valid_pose(*interpolated_pose) 
             if error_code != ValidErrorCode.VALID:
@@ -377,10 +383,7 @@ class kinematicManager:
         Td = 0
 
         if spatium == 0:
-            if desired_time:
-                return max(0.0, desired_time)
-            else:
-                return 0.0
+            return 0.0
 
         if slow_down:
             divider = 2
