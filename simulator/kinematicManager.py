@@ -475,11 +475,11 @@ class kinematicManager:
         # speed_up_distance   = [(joints_speed[i]**2 - v_in[i]**2)/(2*acceleration) for i in range(6)]
         # speed_down_distance = [(joints_speed[i]**2 - v_out[i]**2)/(2*acceleration) for i in range(6)]
 
-        speed_up_time  = [(joints_speed[i] - v_in[i])/acceleration for i in range(6)]
+        speed_up_time  = [(abs(joints_speed[i] - v_in[i]))/acceleration for i in range(6)]
 
         speed_down_time = [0.0] * 6
         if slow_down:
-            speed_down_time = [(joints_speed[i] - v_out[i])/acceleration for i in range(6)]
+            speed_down_time = [(abs(joints_speed[i] - v_out[i]))/acceleration for i in range(6)]
         # const_time  = [(joints_diff_angles[i] - speed_up_distance[i] - speed_down_distance[i])/joints_speed[i] if joints_speed[i]!=0 else 0 for i in range(6)]
     
 
