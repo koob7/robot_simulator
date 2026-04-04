@@ -93,7 +93,7 @@ class MainWindow(QtWidgets.QSplitter):
 
         self.tabs = ButtonTabWidget()
         self.tabs.add_tab(self.ik_tab, "IK control", default_active=True)
-        self.tabs.add_tab(self.fk_tab, "FK control", default_active=True)
+        self.tabs.add_tab(self.fk_tab, "FK control")
         self.tabs.add_tab(self.velocity_tab, "Velocity chart", default_active=True)
         self.tabs.add_tab(self.usart_tab, "USART monitor")
         self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")

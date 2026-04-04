@@ -250,16 +250,14 @@ class kinematicManager:
         else:
             time += const_distance / vel
             elapsed_distance -= const_distance
-        
-        if elapsed_distance<0:
-            return time
 
-        #deceleration  (vel + (vel^2 - 2*acc*spatium)^(1/2))/acc
-        sqrt_value = vel**2 - 2*acc*elapsed_distance
-        sqrt_value = round(sqrt_value, 6)
-        if sqrt_value<0:
-            tmp = 10
-        time += (vel - math.sqrt(sqrt_value))/acc
+        #deceleration
+        if elapsed_distance<0:
+            elapsed_distance = 0
+        reversed_distance = speed_down_distance - elapsed_distance
+        if reversed_distance<0:
+            reversed_distance = 0
+        time += math.sqrt((2*speed_down_distance)/acc) - math.sqrt((2*(reversed_distance))/acc)
 
         return time
 
