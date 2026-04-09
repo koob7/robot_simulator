@@ -136,7 +136,7 @@ class kinematicManager:
         
         angles = self.path.joints_angles[self.current_step_index]
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
-        
+
         velocity = self.path.tcp_speed[self.current_step_index]
         self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
 
@@ -203,9 +203,6 @@ class kinematicManager:
             self.wrapper.rotateRobot(self.ROBOT_FK, *eval_ik_result)
             self.fk_tab.set_values(int(eval_ik_result[0]), int(eval_ik_result[1]), int(eval_ik_result[2]), int(eval_ik_result[3]), int(eval_ik_result[4]), int(eval_ik_result[5]))
 
-
-
-
         if movement is None:
             movement = self.robot_viewport.get_current_movement_type()
 
@@ -232,12 +229,12 @@ class kinematicManager:
                 speed = self.ANGLE_SPEED
                 acceleration = self.ANGLE_ACCELERATION
         if movement == MovementType.LINEAR:
-            self.path.copy_from(self.plan_linear_motion(target_pose, speed, acceleration))
+            self.path.sum_paths(self.plan_linear_motion(target_pose, speed, acceleration))
 
         elif movement == MovementType.PTP:
             initial_speed = [0.0]*6
             initial_speed[0] = 30.0
-            self.path.copy_from(self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, initial_speed, [0.0]*6, True, 2))
+            self.path.sum_paths(self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, initial_speed, [0.0]*6, True, 2))
         
         if self.path.get_length() == 0:
             logger.debug("Motion planning failed, skipping movement")
@@ -501,7 +498,6 @@ class kinematicManager:
         simulation_step_time = simulation_time/simulation_steps
 
         overspeed  = [simulation_time * v_in[i] >= joints_diff_angles[i] for i in range(6)]
-        #mamy bład z liczeniem prędkości docelowej - chyba musimy to rozdzielić na zwalnianie i przyśpieszanie 
 
         for i in range(6):
             if overspeed[i]:
@@ -514,73 +510,13 @@ class kinematicManager:
                 if ((v_in[i] + (v_in[i] - simulation_time * acceleration))/2)*simulation_time > joints_diff_angles[i]:
                     logger.info(f"Joint {i} cannot reach target angle")
                     tmp = 10
+
         # wyznaczenie prędkości docelowej dla każdej z osi - zgodnie ze wzorami matlab
-
-        joints_speed = [v_max] * 6
-
-        acceleration_tab = [ -acceleration if overspeed[i] else acceleration for i in range(6)]
-
+        joints_speed = [0.0]*6
         for i in range(6):
-            if joints_diff_angles[i] == 0:
-                joints_speed[i] = 0
+            joints_speed[i] = self.calculate_new_speed(joints_diff_angles[i], v_in[i], v_out[i], overspeed[i], acceleration, simulation_time, slow_down)
 
-            elif overspeed[i]:
-                if slow_down:
-                    #v_in/2 + v_out/2 - (acc*time)/2 + (time^2*acc^2 - 2*time*acc*v_in - 2*time*acc*v_out + 4*spatium*acc - v_in^2 + 2*v_in*v_out - v_out^2)^(1/2)/2
-                    sqrt_value = (
-                        simulation_time**2 * acceleration**2
-                        - 2*simulation_time * acceleration * v_in[i]
-                        - 2*simulation_time * acceleration * v_out[i]
-                        + 4 * joints_diff_angles[i] * acceleration
-                        - v_in[i]**2
-                        + 2 * v_in[i] * v_out[i]
-                        - v_out[i]**2
-                    )
-                    if sqrt_value < 0:
-                        sqrt_value = 0
-
-                    joints_speed[i] = (
-                        v_in[i]/2 
-                        + v_out[i]/2 
-                        - (acceleration * simulation_time)/2 
-                        + (math.sqrt(sqrt_value))/2
-                    )
-                    #joints_speed[i] = (- v_in[i]**2 + v_out[i]**2 + 2*acceleration*joints_diff_angles[i])/(2*v_out[i] - 2*v_in[i] + 2*acceleration*simulation_time)
-                else:
-                    sqrt_value = acceleration*(acceleration * simulation_time**2 - 2 * v_in[i] * simulation_time + 2 * joints_diff_angles[i])
-                    if sqrt_value < 0:
-                        sqrt_value = 0
-
-                    joints_speed[i] = (v_in[i] + math.sqrt(sqrt_value) - acceleration * simulation_time)
-            else:
-                if slow_down:
-                    sqrt_value = (
-                        simulation_time**2 * acceleration**2
-                        + 2*simulation_time * acceleration * v_in[i]
-                        + 2*simulation_time * acceleration * v_out[i]
-                        - 4 * joints_diff_angles[i] * acceleration
-                        - v_in[i]**2
-                        + 2 * v_in[i] * v_out[i]
-                        - v_out[i]**2
-                    )
-                    if sqrt_value < 0:
-                        sqrt_value = 0
-
-                    joints_speed[i] = (
-                        v_in[i]/2 
-                        + v_out[i]/2 
-                        + (acceleration * simulation_time)/2 
-                        - (math.sqrt(sqrt_value))/2
-                    )
-
-                else:
-                    sqrt_value = acceleration*(acceleration * simulation_time**2 + 2 * v_in[i] * simulation_time - 2 * joints_diff_angles[i])
-                    if sqrt_value < 0:
-                        sqrt_value = 0
-
-                    joints_speed[i] = (v_in[i] - math.sqrt(sqrt_value) + acceleration * simulation_time)# wczoraj znalazłem że tutaj powinien być plus a nie minus
-
-
+        
         # commented values not used now - just for debugging purposes
         # speed_up_distance   = [(joints_speed[i]**2 - v_in[i]**2)/(2*acceleration_tab[i]) for i in range(6)]
         # speed_down_distance = [(joints_speed[i]**2 - v_out[i]**2)/(2*acceleration_tab[i]) for i in range(6)]
@@ -590,8 +526,8 @@ class kinematicManager:
         speed_down_time = [0.0] * 6
         if slow_down:
             speed_down_time = [abs(joints_speed[i] - v_out[i])/acceleration for i in range(6)]
+        
         # const_time  = [(joints_diff_angles[i] - speed_up_distance[i] - speed_down_distance[i])/joints_speed[i] if joints_speed[i]!=0 else 0 for i in range(6)]
-    
 
         #przygotowanie struktur wchodzących do ścieżki path
         new_path: pathStruct = pathStruct()
@@ -606,8 +542,7 @@ class kinematicManager:
         for step in range(simulation_steps):
 
             elapsed_time += simulation_step_time
-        
-            #jakie tutaj mam dać przyśpiesznei
+
             interpolated_joint_angles = [start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i]) for i in range(6)]
 
             if elapsed_time >= round(simulation_time, 6) - 0.0001:
@@ -647,7 +582,66 @@ class kinematicManager:
             previous_joints_speeds = joints_speeds
             previous_joints_angles = interpolated_joint_angles
             
-        for i in range(6):
-            #tu ma być accelartion a nie tab
-            joints_required_time[i] = self.calculate_minimial_joint_time(joints_diff_angles[i], v_max, acceleration, v_in[i], v_out[i], slow_down)
         return new_path
+    
+    def calculate_new_speed(self, joints_diff_angles, v_in, v_out, overspeed, acceleration, simulation_time, slow_down):
+        joints_speed = 0.0
+
+        if joints_diff_angles == 0:
+            joints_speed = 0
+
+        elif overspeed:
+            if slow_down:
+                sqrt_value = (
+                    simulation_time**2 * acceleration**2
+                    - 2*simulation_time * acceleration * v_in
+                    - 2*simulation_time * acceleration * v_out
+                    + 4 * joints_diff_angles * acceleration
+                    - v_in**2
+                    + 2 * v_in * v_out
+                    - v_out**2
+                )
+                if sqrt_value < 0:
+                    sqrt_value = 0
+
+                joints_speed = (
+                    v_in/2 
+                    + v_out/2 
+                    - (acceleration * simulation_time)/2 
+                    + (math.sqrt(sqrt_value))/2
+                )
+            else:
+                sqrt_value = acceleration*(acceleration * simulation_time**2 - 2 * v_in * simulation_time + 2 * joints_diff_angles)
+                if sqrt_value < 0:
+                    sqrt_value = 0
+
+                joints_speed = (v_in + math.sqrt(sqrt_value) - acceleration * simulation_time)
+        else:
+            if slow_down:
+                sqrt_value = (
+                    simulation_time**2 * acceleration**2
+                    + 2*simulation_time * acceleration * v_in
+                    + 2*simulation_time * acceleration * v_out
+                    - 4 * joints_diff_angles * acceleration
+                    - v_in**2
+                    + 2 * v_in * v_out
+                    - v_out**2
+                )
+                if sqrt_value < 0:
+                    sqrt_value = 0
+
+                joints_speed = (
+                    v_in/2 
+                    + v_out/2 
+                    + (acceleration * simulation_time)/2 
+                    - (math.sqrt(sqrt_value))/2
+                )
+
+            else:
+                sqrt_value = acceleration*(acceleration * simulation_time**2 + 2 * v_in * simulation_time - 2 * joints_diff_angles)
+                if sqrt_value < 0:
+                    sqrt_value = 0
+
+                joints_speed = (v_in - math.sqrt(sqrt_value) + acceleration * simulation_time)
+
+        return joints_speed
