@@ -82,7 +82,7 @@ class VELOCITY_TAB(QtWidgets.QWidget):
 		self.render_worker.minimized = minimized
 
 	def update_progress(self, time_elapsed):
-		if time_elapsed >= self.duration:
+		if time_elapsed >= self.duration - 0.000001:
 			self.render_worker.next_timestamp = -1
 		else:
 			self.render_worker.next_timestamp = time_elapsed
