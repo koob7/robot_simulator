@@ -364,14 +364,6 @@ class kinematicManager:
             if (step == step_number):
                 slow_down = True
 
-            if elapsed_distance+single_step_distance <= linear_distance:
-                future_time = self.calculate_time(elapsed_distance+single_step_distance, speed, acceleration, linear_distance, speed_up_distance, speed_down_distance)
-                max_angle = acceleration*future_time**2/2
-                for i in range(6):
-                    if abs(interpolated_joints_angles[i] - previous_joints_angles[i]) > max_angle:
-                        v_out[i] = previous_joints_speeds[i]
-                        slow_down = True
-
             step_path = self.plan_ptp_motion(previous_joints_angles, interpolated_joints_angles, self.ANGLE_SPEED, self.ANGLE_ACCELERATION, previous_joints_speeds, v_out, slow_down, time_diff, previous_tcp_speed)           
 
             if step_path.get_length() == 0:
@@ -489,6 +481,22 @@ class kinematicManager:
         #desired time is already considered
         simulation_time = max(joints_required_time)
         simulation_time_index = joints_required_time.index(simulation_time)
+
+        #TODO
+        #słabe podejście ale na ten momemnt nie mam czasu tego rozwiązywać
+        #problem polega na zbyt wejściowej zbyt dużej prędkości w stosunku do dystansu który mamy pokonać
+        #inaczej mówiąc w czasie który mamy podany musimy zwalniać z ogromnym przyśpieszeniem żeby zdążyć wychamować w podanym dystansie
+        #lepszym rozwiązaniem było by zwalnianie końcówki poprzedniego ruchu ale sytuacja taka jest trudna do wykrycia
+        while True:
+            joints_speeds = [abs(target_pose[i] - start_pose[i]) / simulation_time for i in range(6)]
+
+            joints_accelerations = [abs(joints_speeds[i] - v_in[i]) / simulation_time for i in range(6)]
+
+            if max(joints_accelerations) > MAX_ANGULAR_ACCELERATION:
+                simulation_time *=1.1
+            else:
+                break
+
         if desired_time:
             simulation_time = max(simulation_time, desired_time)
 
@@ -563,14 +571,14 @@ class kinematicManager:
             for i in range(6):
                 if joints_speeds[i] > MAX_ANGULAR_SPEED + 1:
                     tmp = 10
-                    continue
+                    break
 
             joints_accelerations = [(joints_speeds[i] - previous_joints_speeds[i]) / simulation_step_time / 2 for i in range(6)]
 
             for i in range(6):
                 if joints_accelerations[i]*2 > MAX_ANGULAR_ACCELERATION+1 or joints_accelerations[i]*2 < -MAX_ANGULAR_ACCELERATION-1:
                     tmp = 10
-                    continue
+                    break
 
             new_path.append(simulation_step_time, tcp_speed, tcp_acceleration, interpolated_pose, joints_speeds, joints_accelerations, interpolated_joint_angles)
 
