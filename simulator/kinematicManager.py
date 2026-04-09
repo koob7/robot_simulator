@@ -39,7 +39,7 @@ class kinematicManager:
         self.ANGLE_SPEED = MAX_ANGULAR_SPEED
         self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
 
-        self.SINGLE_STEP_DISTANCE = 1  # mm (for simple linear interpolation)
+        self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
         self.SINGLE_STEP_ANGLE = 0.2 # degrees (for simple linear interpolation in joint space)
 
         self.current_step_index = 0
@@ -492,8 +492,6 @@ class kinematicManager:
         if desired_time:
             simulation_time = max(simulation_time, desired_time)
 
-        logger.info(f"Calculated simulation time: {simulation_time:.4f} seconds")
-
         simulation_steps = math.ceil(joints_diff_angles[simulation_time_index]/self.SINGLE_STEP_ANGLE)
         simulation_step_time = simulation_time/simulation_steps
 
@@ -545,7 +543,7 @@ class kinematicManager:
 
             interpolated_joint_angles = [start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i]) for i in range(6)]
 
-            if elapsed_time >= round(simulation_time, 6) - 0.0001:
+            if elapsed_time >= simulation_time- 0.000001:
                 interpolated_joint_angles = target_pose
 
             interpolated_pose = calculate_fk(*interpolated_joint_angles)
@@ -610,6 +608,7 @@ class kinematicManager:
                     - (acceleration * simulation_time)/2 
                     + (math.sqrt(sqrt_value))/2
                 )
+                joints_speed = (- v_in**2 + v_out**2 + 2*acceleration*joints_diff_angles)/(2*v_out - 2*v_in + 2*acceleration*simulation_time)
             else:
                 sqrt_value = acceleration*(acceleration * simulation_time**2 - 2 * v_in * simulation_time + 2 * joints_diff_angles)
                 if sqrt_value < 0:
