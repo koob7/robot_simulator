@@ -221,6 +221,9 @@ class kinematicManager:
         self.current_step_index = 0
         self.elapsed_time = 0.0
 
+        tcp_speed = 0
+        tcp_acc = 0
+
         if speed is None or acceleration is None:
             if movement == MovementType.LINEAR:
                 speed = self.LINEAR_VELOCITY
@@ -230,67 +233,43 @@ class kinematicManager:
                 acceleration = self.ANGLE_ACCELERATION
         if movement == MovementType.LINEAR:
             self.path.sum_paths(self.plan_linear_motion(target_pose, speed, acceleration))
+            tcp_speed = speed
+            tcp_acc = acceleration
 
         elif movement == MovementType.PTP:
-            initial_speed = [0.0]*6
-            initial_speed[0] = 30.0
-            self.path.sum_paths(self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, initial_speed, [0.0]*6, True, 2))
+            self.path.sum_paths(self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True))
+
+            if self.path.get_length()!=0:
+                max_tcp_acceleration = max(self.path.tcp_acceleration)
+                min_tcp_acceleration = min(self.path.tcp_acceleration)
+
+                tcp_divider = max(abs(max_tcp_acceleration), abs(min_tcp_acceleration))
+
+                max_tcp_speed = max(self.path.tcp_speed)
+
+                tcp_speed = max_tcp_speed
+                tcp_acc = tcp_divider*2
         
         if self.path.get_length() == 0:
             logger.debug("Motion planning failed, skipping movement")
             return
 
-        self.animation_end_callback = callback
+        self.simulation_duration = sum(self.path.timestamps)
 
-        self.simulation_duration = sum(self.path.timestamps) #path.timestamps contains timestamps for each step
-
-        max_tcp_acceleration = max(self.path.tcp_acceleration)
-        min_tcp_acceleration = min(self.path.tcp_acceleration)
-
-        tcp_divider = max(abs(max_tcp_acceleration), abs(min_tcp_acceleration))
-
-        max_tcp_speed = max(self.path.tcp_speed)
-
+        # przesunięcie wykresu prędkości żeby środek (zerowe przyśpieszenie) był na środku wykresu 
+        # na górze dodatnie przyśpieszenie, na dole ujemne
         for i in range(self.path.get_length()):
-            self.path.tcp_acceleration[i] = self.path.tcp_acceleration[i] + tcp_divider
+            self.path.tcp_acceleration[i] = self.path.tcp_acceleration[i] + tcp_acc/2
 
         for i in range(len(self.path.joints_acceleration)):
             for j in range(self.path.get_length()):
                 self.path.joints_acceleration[i][j] = self.path.joints_acceleration[i][j] + MAX_ANGULAR_ACCELERATION
 
-        self.velocity_tab.update_velocity_profiles( self.path, max_tcp_speed, tcp_divider*2, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION*2, self.simulation_duration)
+        self.animation_end_callback = callback
+        self.velocity_tab.update_velocity_profiles( self.path, tcp_speed, tcp_acc, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION*2, self.simulation_duration)
 
         self.simulation_timer.start()
         self.animate_movement()
-
-    def calculate_time (self,  elapsed_distance, vel, acc, distance, speed_up_distance, speed_down_distance):
-        time = 0.0
-
-        const_distance = distance - speed_up_distance - speed_down_distance
-
-        #speed_up
-        if elapsed_distance<=speed_up_distance:
-            return math.sqrt((2*elapsed_distance)/acc)
-        else:
-            time += math.sqrt((2*speed_up_distance)/acc)
-            elapsed_distance -= speed_up_distance
-
-        #const phase
-        if elapsed_distance<const_distance:
-            return time +  elapsed_distance / vel
-        else:
-            time += const_distance / vel
-            elapsed_distance -= const_distance
-
-        #deceleration
-        if elapsed_distance<0:
-            elapsed_distance = 0
-        reversed_distance = speed_down_distance - elapsed_distance
-        if reversed_distance<0:
-            reversed_distance = 0
-        time += math.sqrt((2*speed_down_distance)/acc) - math.sqrt((2*(reversed_distance))/acc)
-
-        return time
 
     def plan_linear_motion (self, target_pose, speed , acceleration):
         current_angles = (
@@ -338,9 +317,6 @@ class kinematicManager:
         speed_down_distance = speed_up_distance
 
         for step in range(1, step_number+1):
-
-            #czy tutaj jednak nie powinniśmy korzystać z jakiegoś wzoru na prostą i przesuwania sie o dystans
-            # re - to chyba właśnie teraz robimy :D
             elapsed_distance += single_step_distance
 
             interpolated_pose = interpolate_pose(current_pose, target_pose, step/step_number)
@@ -355,8 +331,6 @@ class kinematicManager:
                 logger.debug(f"Invalid pose at step {step}, skipping movement")
                 self.robot_viewport.status_changed_callback(error_code.text())
                 return new_path.clear()
-
-            # def plan_ptp_motion(self, start_pose, target_pose, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None, previous_tcp_speed = 0):
 
             slow_down = False
             v_out = [0.0]*6
@@ -381,9 +355,163 @@ class kinematicManager:
 
         return new_path
 
+    def plan_ptp_motion(self, start_pose, target_pose, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None, previous_tcp_speed = 0):
+        #przygotowanie danych
+        if v_max > MAX_ANGULAR_SPEED:
+            logger.info(f"Requested speed {v_max} exceeds maximum angular speed, capping to {MAX_ANGULAR_SPEED}")
+            v_max = MAX_ANGULAR_SPEED
+        
+        if acceleration > MAX_ANGULAR_ACCELERATION:
+            logger.info(f"Requested acceleration {acceleration} exceeds maximum angular acceleration, capping to {MAX_ANGULAR_ACCELERATION}")
+            acceleration = MAX_ANGULAR_ACCELERATION
 
-  
+        directions = [1 if target_pose[i] - start_pose[i] >= 0 else -1 for i in range(6)]
 
+        joints_diff_angles = [abs(target_pose[i] - start_pose[i]) for i in range(6)]
+
+        if max(joints_diff_angles) == 0:
+            logger.info("no movement")
+            return pathStruct()
+        
+        #wyznaczenie minimalnego czasu symulacji
+        joints_required_time = [0.0]*6
+        for i in range(6):
+            joints_required_time[i] = self.calculate_minimial_joint_time(joints_diff_angles[i], v_max, acceleration, v_in[i], v_out[i], slow_down)
+
+        #desired time is already considered
+        simulation_time = max(joints_required_time)
+        simulation_time_index = joints_required_time.index(simulation_time)
+
+        #TODO
+        #słabe podejście ale na ten momemnt nie mam czasu tego rozwiązywać
+        #problem polega na zbyt wejściowej zbyt dużej prędkości w stosunku do dystansu który mamy pokonać
+        #inaczej mówiąc w czasie który mamy podany musimy zwalniać z ogromnym przyśpieszeniem żeby zdążyć wychamować w podanym dystansie
+        #lepszym rozwiązaniem było by zwalnianie końcówki poprzedniego ruchu ale sytuacja taka jest trudna do wykrycia
+        while True:
+            joints_speeds = [abs(target_pose[i] - start_pose[i]) / simulation_time for i in range(6)]
+
+            joints_accelerations = [abs(joints_speeds[i] - v_in[i]) / simulation_time for i in range(6)]
+
+            if max(joints_accelerations) > MAX_ANGULAR_ACCELERATION:
+                simulation_time *=1.1
+            else:
+                break
+
+        if desired_time:
+            simulation_time = max(simulation_time, desired_time)
+
+        simulation_steps = math.ceil(joints_diff_angles[simulation_time_index]/self.SINGLE_STEP_ANGLE)
+        simulation_step_time = simulation_time/simulation_steps
+
+        overspeed  = [simulation_time * v_in[i] >= joints_diff_angles[i] for i in range(6)]
+
+        for i in range(6):
+            if overspeed[i]:
+                #musimy przyśpieszyć
+                if ((v_in[i] + (v_in[i] + simulation_time * acceleration))/2)*simulation_time < joints_diff_angles[i]:
+                    logger.info(f"Joint {i} cannot reach target angle")
+                    tmp = 10
+            else:
+                #musimy zwolnić
+                if ((v_in[i] + (v_in[i] - simulation_time * acceleration))/2)*simulation_time > joints_diff_angles[i]:
+                    logger.info(f"Joint {i} cannot reach target angle")
+                    tmp = 10
+
+        # wyznaczenie prędkości docelowej dla każdej z osi - zgodnie ze wzorami matlab
+        joints_speed = [0.0]*6
+        for i in range(6):
+            joints_speed[i] = self.calculate_new_speed(joints_diff_angles[i], v_in[i], v_out[i], overspeed[i], acceleration, simulation_time, slow_down)
+
+        speed_up_time  = [abs(joints_speed[i] - v_in[i])/acceleration for i in range(6)]
+
+        speed_down_time = [0.0] * 6
+        if slow_down:
+            speed_down_time = [abs(joints_speed[i] - v_out[i])/acceleration for i in range(6)]
+        
+        #przygotowanie struktur wchodzących do ścieżki path
+        new_path: pathStruct = pathStruct()
+
+        #previous_tcp_speed is passed as argument to function
+        previous_joints_speeds = v_in
+        previous_joints_angles = start_pose
+        previous_pose = tuple(calculate_fk(*start_pose))
+
+        elapsed_time = 0.0
+
+        for step in range(simulation_steps):
+
+            elapsed_time += simulation_step_time
+
+            interpolated_joint_angles = [start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i]) for i in range(6)]
+
+            if elapsed_time >= simulation_time- 0.000001:
+                interpolated_joint_angles = target_pose
+
+            interpolated_pose = calculate_fk(*interpolated_joint_angles)
+            interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
+
+            error_code = valid_pose(*interpolated_pose) 
+            if error_code != ValidErrorCode.VALID:
+                logger.info(f"Invalid pose at step {step}, skipping movement")
+                self.robot_viewport.status_changed_callback(error_code.text())
+                return pathStruct()
+            
+            # tutaj chciałem stworzyć podobne podejście jak wyżej ale średnio działa
+            # while True:
+            #     tcp_speed = abs(interpolated_distance) / simulation_step_time
+
+            #     tcp_acceleration = abs(tcp_speed - previous_tcp_speed)/simulation_step_time
+
+            #     if tcp_acceleration > self.LINERAR_SPEED_UP_VELOCITY:
+            #         simulation_step_time *=1.1
+            #     else:
+            #         break
+
+            tcp_speed = abs(interpolated_distance)/simulation_step_time
+            tcp_acceleration = (tcp_speed - previous_tcp_speed)/simulation_step_time/2 #0 is in the midle of chart so values have to be scaled by 2
+
+            joints_speeds = [abs(interpolated_joint_angles[i] - previous_joints_angles[i]) / simulation_step_time for i in range(6)]
+            joints_accelerations = [(joints_speeds[i] - previous_joints_speeds[i]) / simulation_step_time / 2 for i in range(6)]
+
+            new_path.append(simulation_step_time, tcp_speed, tcp_acceleration, interpolated_pose, joints_speeds, joints_accelerations, interpolated_joint_angles)
+
+            previous_tcp_speed = tcp_speed
+            previous_pose = interpolated_pose
+
+            previous_joints_speeds = joints_speeds
+            previous_joints_angles = interpolated_joint_angles
+            
+        return new_path
+    
+    def calculate_time (self,  elapsed_distance, vel, acc, distance, speed_up_distance, speed_down_distance):
+        time = 0.0
+
+        const_distance = distance - speed_up_distance - speed_down_distance
+
+        #speed_up
+        if elapsed_distance<=speed_up_distance:
+            return math.sqrt((2*elapsed_distance)/acc)
+        else:
+            time += math.sqrt((2*speed_up_distance)/acc)
+            elapsed_distance -= speed_up_distance
+
+        #const phase
+        if elapsed_distance<const_distance:
+            return time +  elapsed_distance / vel
+        else:
+            time += const_distance / vel
+            elapsed_distance -= const_distance
+
+        #deceleration
+        if elapsed_distance<0:
+            elapsed_distance = 0
+        reversed_distance = speed_down_distance - elapsed_distance
+        if reversed_distance<0:
+            reversed_distance = 0
+        time += math.sqrt((2*speed_down_distance)/acc) - math.sqrt((2*(reversed_distance))/acc)
+
+        return time
+    
     def calculate_spatium (self,  elapsed_time, v_in, v_const, acc, duration, speed_up_time, speed_down_time):
         spatium = 0.0
 
@@ -454,141 +582,6 @@ class kinematicManager:
         time = Ta + Tc + Td
 
         return time
-
-    def plan_ptp_motion(self, start_pose, target_pose, v_max, acceleration, v_in, v_out, slow_down: bool, desired_time = None, previous_tcp_speed = 0):
-        #przygotowanie danych
-        if v_max > MAX_ANGULAR_SPEED:
-            logger.info(f"Requested speed {v_max} exceeds maximum angular speed, capping to {MAX_ANGULAR_SPEED}")
-            v_max = MAX_ANGULAR_SPEED
-        
-        if acceleration > MAX_ANGULAR_ACCELERATION:
-            logger.info(f"Requested acceleration {acceleration} exceeds maximum angular acceleration, capping to {MAX_ANGULAR_ACCELERATION}")
-            acceleration = MAX_ANGULAR_ACCELERATION
-
-        directions = [1 if target_pose[i] - start_pose[i] >= 0 else -1 for i in range(6)]
-
-        joints_diff_angles = [abs(target_pose[i] - start_pose[i]) for i in range(6)]
-
-        if max(joints_diff_angles) == 0:
-            logger.info("no movement")
-            return pathStruct()
-        
-        #wyznaczenie minimalnego czasu symulacji
-        joints_required_time = [0.0]*6
-        for i in range(6):
-            joints_required_time[i] = self.calculate_minimial_joint_time(joints_diff_angles[i], v_max, acceleration, v_in[i], v_out[i], slow_down)
-
-        #desired time is already considered
-        simulation_time = max(joints_required_time)
-        simulation_time_index = joints_required_time.index(simulation_time)
-
-        #TODO
-        #słabe podejście ale na ten momemnt nie mam czasu tego rozwiązywać
-        #problem polega na zbyt wejściowej zbyt dużej prędkości w stosunku do dystansu który mamy pokonać
-        #inaczej mówiąc w czasie który mamy podany musimy zwalniać z ogromnym przyśpieszeniem żeby zdążyć wychamować w podanym dystansie
-        #lepszym rozwiązaniem było by zwalnianie końcówki poprzedniego ruchu ale sytuacja taka jest trudna do wykrycia
-        while True:
-            joints_speeds = [abs(target_pose[i] - start_pose[i]) / simulation_time for i in range(6)]
-
-            joints_accelerations = [abs(joints_speeds[i] - v_in[i]) / simulation_time for i in range(6)]
-
-            if max(joints_accelerations) > MAX_ANGULAR_ACCELERATION:
-                simulation_time *=1.1
-            else:
-                break
-
-        if desired_time:
-            simulation_time = max(simulation_time, desired_time)
-
-        simulation_steps = math.ceil(joints_diff_angles[simulation_time_index]/self.SINGLE_STEP_ANGLE)
-        simulation_step_time = simulation_time/simulation_steps
-
-        overspeed  = [simulation_time * v_in[i] >= joints_diff_angles[i] for i in range(6)]
-
-        for i in range(6):
-            if overspeed[i]:
-                #musimy przyśpieszyć
-                if ((v_in[i] + (v_in[i] + simulation_time * acceleration))/2)*simulation_time < joints_diff_angles[i]:
-                    logger.info(f"Joint {i} cannot reach target angle")
-                    tmp = 10
-            else:
-                #musimy zwolnić
-                if ((v_in[i] + (v_in[i] - simulation_time * acceleration))/2)*simulation_time > joints_diff_angles[i]:
-                    logger.info(f"Joint {i} cannot reach target angle")
-                    tmp = 10
-
-        # wyznaczenie prędkości docelowej dla każdej z osi - zgodnie ze wzorami matlab
-        joints_speed = [0.0]*6
-        for i in range(6):
-            joints_speed[i] = self.calculate_new_speed(joints_diff_angles[i], v_in[i], v_out[i], overspeed[i], acceleration, simulation_time, slow_down)
-
-        
-        # commented values not used now - just for debugging purposes
-        # speed_up_distance   = [(joints_speed[i]**2 - v_in[i]**2)/(2*acceleration_tab[i]) for i in range(6)]
-        # speed_down_distance = [(joints_speed[i]**2 - v_out[i]**2)/(2*acceleration_tab[i]) for i in range(6)]
-
-        speed_up_time  = [abs(joints_speed[i] - v_in[i])/acceleration for i in range(6)]
-
-        speed_down_time = [0.0] * 6
-        if slow_down:
-            speed_down_time = [abs(joints_speed[i] - v_out[i])/acceleration for i in range(6)]
-        
-        # const_time  = [(joints_diff_angles[i] - speed_up_distance[i] - speed_down_distance[i])/joints_speed[i] if joints_speed[i]!=0 else 0 for i in range(6)]
-
-        #przygotowanie struktur wchodzących do ścieżki path
-        new_path: pathStruct = pathStruct()
-
-        #previous_tcp_speed is passed as argument to function
-        previous_joints_speeds = v_in
-        previous_joints_angles = start_pose
-        previous_pose = tuple(calculate_fk(*start_pose))
-
-        elapsed_time = 0.0
-
-        for step in range(simulation_steps):
-
-            elapsed_time += simulation_step_time
-
-            interpolated_joint_angles = [start_pose[i] + directions[i] * self.calculate_spatium(elapsed_time, v_in[i], joints_speed[i], acceleration, simulation_time, speed_up_time[i], speed_down_time[i]) for i in range(6)]
-
-            if elapsed_time >= simulation_time- 0.000001:
-                interpolated_joint_angles = target_pose
-
-            interpolated_pose = calculate_fk(*interpolated_joint_angles)
-            interpolated_distance = math.sqrt(sum((interpolated_pose[i] - previous_pose[i]) ** 2 for i in range(3)))
-
-            error_code = valid_pose(*interpolated_pose) 
-            if error_code != ValidErrorCode.VALID:
-                logger.info(f"Invalid pose at step {step}, skipping movement")
-                self.robot_viewport.status_changed_callback(error_code.text())
-                return pathStruct()
-
-            tcp_speed = abs(interpolated_distance)/simulation_step_time
-            tcp_acceleration = (tcp_speed - previous_tcp_speed)/simulation_step_time/2 #0 is in the midle of chart so values have to be scaled by 2
-
-            joints_speeds = [abs(interpolated_joint_angles[i] - previous_joints_angles[i]) / simulation_step_time for i in range(6)]
-
-            for i in range(6):
-                if joints_speeds[i] > MAX_ANGULAR_SPEED + 1:
-                    tmp = 10
-                    break
-
-            joints_accelerations = [(joints_speeds[i] - previous_joints_speeds[i]) / simulation_step_time / 2 for i in range(6)]
-
-            for i in range(6):
-                if joints_accelerations[i]*2 > MAX_ANGULAR_ACCELERATION+1 or joints_accelerations[i]*2 < -MAX_ANGULAR_ACCELERATION-1:
-                    tmp = 10
-                    break
-
-            new_path.append(simulation_step_time, tcp_speed, tcp_acceleration, interpolated_pose, joints_speeds, joints_accelerations, interpolated_joint_angles)
-
-            previous_tcp_speed = tcp_speed
-            previous_pose = interpolated_pose
-
-            previous_joints_speeds = joints_speeds
-            previous_joints_angles = interpolated_joint_angles
-            
-        return new_path
     
     def calculate_new_speed(self, joints_diff_angles, v_in, v_out, overspeed, acceleration, simulation_time, slow_down):
         joints_speed = 0.0
