@@ -26,7 +26,7 @@ class RenderWorker(QtCore.QObject):
 class VELOCITY_TAB(QtWidgets.QWidget):
 	def __init__(self):
 		super().__init__()
-		self.setMinimumHeight(600)
+		self.setMinimumHeight(430)
 		self.setMinimumWidth(200)
 
 		self.wrapper = Wrapper()
