@@ -18,7 +18,7 @@ class kinematicManager:
         self.fk_tab = fk_tab
         self.velocity_tab = velocity_tab
         self.robot_viewport = robot_viewport
-        self.robot_control = robot_control 
+        self.robot_control = robot_control
 
         ik_tab.link_ik_changed_callback(self.ik_changed_callback)
         ik_tab.link_ik_released_callback(self.ik_released_callback)
@@ -133,10 +133,13 @@ class kinematicManager:
             self.elapsed_time += tmp_elapsed_time
             self.velocity_tab.update_progress(self.elapsed_time)
             return
+
         
         angles = self.path.joints_angles[self.current_step_index]
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
 
+        self.robot_control.move_to_position(angles, self.path.timestamps[self.current_step_index] * 1000)
+        
         velocity = self.path.tcp_speed[self.current_step_index]
         self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
 
@@ -152,6 +155,7 @@ class kinematicManager:
         
         self.simulation_protection_time.start(16)
         self.simulation_protection_start_time = QtCore.QTime.currentTime()
+
 
     def smooth_animation_callback(self):
         if self.path.get_length() == 0 or self.current_step_index >= self.path.get_length():
