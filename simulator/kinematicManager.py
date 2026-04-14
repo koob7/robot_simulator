@@ -39,8 +39,8 @@ class kinematicManager:
         self.ANGLE_SPEED = MAX_ANGULAR_SPEED
         self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
 
-        self.SINGLE_STEP_DISTANCE = 0.1  # mm (for simple linear interpolation)
-        self.SINGLE_STEP_ANGLE = 0.2 # degrees (for simple linear interpolation in joint space)
+        self.SINGLE_STEP_DISTANCE = 1  # mm (for simple linear interpolation)
+        self.SINGLE_STEP_ANGLE = 1 # degrees (for simple linear interpolation in joint space)
 
         self.current_step_index = 0
         self.elapsed_time = 0.0
@@ -149,7 +149,8 @@ class kinematicManager:
             interval_ms = self.path.timestamps[self.current_step_index+1] * 1000
         self.simulation_timer.setInterval(int(interval_ms))
 
-        self.elapsed_time += self.path.timestamps[self.current_step_index] 
+        self.elapsed_time += self.path.timestamps[self.current_step_index]
+        logger.info(f"step time = {self.path.timestamps[self.current_step_index]*1000}ms") 
         self.current_step_index += 1
         self.velocity_tab.update_progress(self.elapsed_time)
         
