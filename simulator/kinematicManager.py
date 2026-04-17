@@ -20,6 +20,8 @@ class kinematicManager:
         self.robot_viewport = robot_viewport
         self.robot_control = robot_control
 
+        self.robot_control.connect_synchronization_callback (self.synchronise_position)
+
         ik_tab.link_ik_changed_callback(self.ik_changed_callback)
         ik_tab.link_ik_released_callback(self.ik_released_callback)
 
@@ -33,14 +35,14 @@ class kinematicManager:
         self.ROBOT_EDGES = 2 #only edges for movement simulation
 
         # Stepper motor parameters
-        self.LINEAR_VELOCITY = 60.0     # mm/s (target constant linear velocity)
-        self.LINERAR_SPEED_UP_VELOCITY = 25.0     # mm/s^2 (velocity during acceleration phase)
+        self.LINEAR_VELOCITY = 30.0     # mm/s (target constant linear velocity)
+        self.LINERAR_SPEED_UP_VELOCITY = 30.0     # mm/s^2 (velocity during acceleration phase)
 
         self.ANGLE_SPEED = MAX_ANGULAR_SPEED
         self.ANGLE_ACCELERATION = MAX_ANGULAR_ACCELERATION
 
         self.SINGLE_STEP_DISTANCE = 1  # mm (for simple linear interpolation)
-        self.SINGLE_STEP_ANGLE = 1 # degrees (for simple linear interpolation in joint space)
+        self.SINGLE_STEP_ANGLE = 0.5 # degrees (for simple linear interpolation in joint space)
 
         self.current_step_index = 0
         self.elapsed_time = 0.0
@@ -73,6 +75,19 @@ class kinematicManager:
         self.current_step_index = 0
         self.simulation_timer = QtCore.QTimer()
         self.simulation_timer.timeout.connect(self.animate_movement)
+
+    def synchronise_position(self, angles):
+        self.abort_motion()
+
+        self.wrapper.rotateRobot(self.ROBOT_FK, *angles)
+        self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
+        self.wrapper.rotateRobot(self.ROBOT_EDGES, *angles)
+
+        fk_result = calculate_fk(*angles)
+        self.fk_tab.set_values(int(angles[0]), int(angles[1]), int(angles[2]), int(angles[3]), int(angles[4]), int(angles[5]))
+        self.ik_tab.set_values(int(fk_result[0]), int(fk_result[1]), int(fk_result[2]), int(fk_result[3]), int(fk_result[4]), int(fk_result[5]))
+
+
 
     def ik_changed_callback(self, _value=None):
         user_position = self.ik_tab.get_values()
@@ -116,8 +131,26 @@ class kinematicManager:
         #self._plan_linear_pose_motion(target_pose)
         self.plan_motion(target_pose, movement=MovementType.LINEAR, speed=self.LINEAR_VELOCITY, acceleration=self.LINERAR_SPEED_UP_VELOCITY)
 
+    def fk_released_callback(self, _value=None):
+        target_angles = self.fk_tab.get_values()
+        target_pose = calculate_fk(
+            target_angles[0],
+            target_angles[1],
+            target_angles[2],
+            target_angles[3],
+            target_angles[4],
+            target_angles[5],
+        )
+        logger.debug(f"FK released target pose (from FK): {target_pose}")
+
+        self.plan_motion(target_angles, speed=self.ANGLE_SPEED, acceleration=self.ANGLE_ACCELERATION, movement=MovementType.PTP)
+
     def animate_movement(self):
         self.simulation_protection_time.stop()
+
+        if self.current_step_index > 0 and self.current_step_index <= self.path.get_length():
+            self.elapsed_time += self.path.timestamps[self.current_step_index-1]
+            self.velocity_tab.update_progress(self.elapsed_time)
 
         if self.path.get_length() == 0 or self.current_step_index >= self.path.get_length():
             self.simulation_timer.stop()
@@ -134,25 +167,23 @@ class kinematicManager:
             self.velocity_tab.update_progress(self.elapsed_time)
             return
 
+        if self.current_step_index == 0: # pierwszy ruch - potrzebny w tablicy tylko do poprawnego rysowania wykresu ale go nie wykonujemy
+            self.current_step_index += 1
+
         
         angles = self.path.joints_angles[self.current_step_index]
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
 
-        self.robot_control.move_to_position(angles, self.path.timestamps[self.current_step_index] * 1000)
+        interval_ms = self.path.timestamps[self.current_step_index] * 1000
+        self.simulation_timer.setInterval(int(interval_ms))
+
+        self.robot_control.move_to_position(angles, interval_ms)
         
         velocity = self.path.tcp_speed[self.current_step_index]
         self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
+        logger.info(f"step time = {interval_ms}ms, angles diff = {[abs(self.path.joints_angles[self.current_step_index][i] - self.path.joints_angles[self.current_step_index-1][i]) for i in range(6)]}, velocity = {velocity} mm/s") 
 
-        if (self.current_step_index == self.path.get_length() - 1):
-            interval_ms = 0 #does not matter, we will stop the simulation after this step
-        else:
-            interval_ms = self.path.timestamps[self.current_step_index+1] * 1000
-        self.simulation_timer.setInterval(int(interval_ms))
-
-        self.elapsed_time += self.path.timestamps[self.current_step_index]
-        logger.info(f"step time = {self.path.timestamps[self.current_step_index]*1000}ms") 
         self.current_step_index += 1
-        self.velocity_tab.update_progress(self.elapsed_time)
         
         self.simulation_protection_time.start(16)
         self.simulation_protection_start_time = QtCore.QTime.currentTime()
@@ -167,23 +198,14 @@ class kinematicManager:
         self.velocity_tab.update_progress(difference)
 
     def abort_motion(self):
-        self.simulation_timer.stop()
         self.path.clear()
+        self.current_step_index = 0
+        self.simulation_timer.stop()
+        self.simulation_protection_time.stop()
+
+        self.velocity_tab.update_progress(-1)
+
         self.robot_viewport.status_changed_callback("Motion aborted")
-
-    def fk_released_callback(self, _value=None):
-        target_angles = self.fk_tab.get_values()
-        target_pose = calculate_fk(
-            target_angles[0],
-            target_angles[1],
-            target_angles[2],
-            target_angles[3],
-            target_angles[4],
-            target_angles[5],
-        )
-        logger.debug(f"FK released target pose (from FK): {target_pose}")
-
-        self.plan_motion(target_angles, speed=self.ANGLE_SPEED, acceleration=self.ANGLE_ACCELERATION, movement=MovementType.PTP)
 
     def plan_motion(self, target_pose, movement: MovementType = None, speed = None, acceleration = None,  set_EDGE_ROBOT = False, callback=None):
         if valid_pose(*target_pose) not in self.acceptable_simulated_errors:

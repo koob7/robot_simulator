@@ -21,10 +21,10 @@ ARM_SAFE_DISTANCE_TO_OBJECT = 25.0 # mm (minimalna odległość ramienia od obie
 
 Limit = namedtuple("Limit", ["min", "max"])
 
-MAX_ANGULAR_SPEED = 60.0  # degrees per second (max speed for any joint)
+MAX_ANGULAR_SPEED = 5.0  # degrees per second (max speed for any joint)
 MAX_MOTOR_ANGLE_SPEED = [MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED, MAX_ANGULAR_SPEED]
 
-MAX_ANGULAR_ACCELERATION = 60.0 # degrees per second squared (max acceleration for any joint)
+MAX_ANGULAR_ACCELERATION = 10.0 # degrees per second squared (max acceleration for any joint)
 MAX_MOTOR_ANGLE_ACCELERATION = [MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION, MAX_ANGULAR_ACCELERATION] 
 
 ANGLES_LIMIT = [

@@ -91,6 +91,7 @@ class USART_TAB(QtWidgets.QWidget):
 
         self.usart_interface = usart_interface
         self.usart_interface.connect_received_callback(self.data_received_callback)
+        self.usart_interface.connect_data_sent_callback(self.data_sent_callback)
         self.usart_interface.connect_status_callback(self.handle_status_changed)
         self.is_connected = False
 
@@ -101,8 +102,8 @@ class USART_TAB(QtWidgets.QWidget):
         self.available_ports_combo.refresh_callback = self.refresh_available_ports
 
         self.baudrate_combo = QComboBox(self)
-        self.baudrate_combo.addItems(["9600", "115200", "3125000", "6250000", "7500000"])
-        self.baudrate_combo.setCurrentText("7500000")
+        self.baudrate_combo.addItems(["9600", "115200", "1282000", "3125000", "6250000", "7500000"])
+        self.baudrate_combo.setCurrentText("1282000")
 
         self.connection_button = QtWidgets.QPushButton("Connect", self)
         self.connection_button.clicked.connect(self.handle_connection_toggle)
@@ -187,3 +188,5 @@ class USART_TAB(QtWidgets.QWidget):
     def data_received_callback(self, data):
         self.log_message_signal.emit(f"{time.strftime('%Y-%m-%d %H:%M:%S')} << {data}")
 
+    def data_sent_callback(self, data):
+        self.log_message_signal.emit(f"{time.strftime('%Y-%m-%d %H:%M:%S')} >> {data}")

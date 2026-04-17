@@ -9,6 +9,7 @@ class USARTControl:
         self.stop_thread = threading.Event()
 
         self.receive_callbacks = []
+        self.data_sent_callbacks = []
 
     def connect(self, port_name, baud_rate):
         if self.serial_port and self.serial_port.is_open:
@@ -23,7 +24,7 @@ class USARTControl:
             self.read_thread = threading.Thread(target=self.receive_data, daemon=True)
             self.read_thread.start()
             if hasattr(self, 'status_changed_callback'):
-                self.status_changed_callback("READY")
+                self.status_changed_callback("CONNECTED")
             return 1
         except serial.SerialException as e:
             return 0
@@ -42,14 +43,22 @@ class USARTControl:
         if self.serial_port and self.serial_port.is_open:
             try:
                 self.serial_port.write((data + "\n").encode('utf-8'))
+                if hasattr(self, 'data_sent_callbacks'):
+                    for cb in self.data_sent_callbacks:
+                        cb(data)
                 return True
             except serial.SerialException as e:
                 return False
         else:
             return False
+        
+    
 
     def connect_received_callback(self, callback):
         self.receive_callbacks.append(callback)
+
+    def connect_data_sent_callback(self, callback):
+        self.data_sent_callbacks.append(callback)
 
     def connect_status_callback(self, callback):
         self.status_changed_callback = callback
