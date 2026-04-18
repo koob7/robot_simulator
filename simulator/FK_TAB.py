@@ -55,6 +55,7 @@ class FK_TAB(QtWidgets.QWidget):
     def reset_value(self):
         for slider in self.sliders:
             slider.setValue(0)
+        self.sliders[2].setValue(90)
         self.fk_released_callback()
 
     def update_label(self, idx, value):

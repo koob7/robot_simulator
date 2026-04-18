@@ -59,6 +59,9 @@ class robot_control(QtCore.QObject):
     def connect_synchronization_callback(self, func):
         self.synchronization_callback = func
 
+    def connect_position_reached_callback(self, func):
+        self.position_reached_callback = func
+
     def usart_status_changed_callback(self, new_status):
         self._usart_status_changed_signal.emit(new_status)
 
@@ -84,6 +87,9 @@ class robot_control(QtCore.QObject):
         self.robot_status = RobotStatus.TIMEOUT
         self.timeout_timer.stop()
         self.status_updated.emit()
+
+        if all(angle is not None for angle in self.desired_angles):
+            logger.info(f"Command timeout for desired angles: {self.desired_angles}")
 
     def move_to_position(self, target_angles, timeout) -> bool:
         status = False
@@ -142,6 +148,8 @@ class robot_control(QtCore.QObject):
                 self.current_angles = angles
                 if all(self.desired_angles[i] is not None and angles[i] == self.desired_angles[i] for i in range(6)):
                     self.robot_status = RobotStatus.READY
+                    if hasattr(self, 'position_reached_callback'):
+                        self.position_reached_callback()
                 else:
                     logger.info(f"desired: {self.desired_angles}, current: {angles}")
 

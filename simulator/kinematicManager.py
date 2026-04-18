@@ -8,6 +8,7 @@ import math
 
 from RobotViewport import MovementType
 from pathStruct import pathStruct
+from robot_control import *
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class kinematicManager:
         self.robot_control = robot_control
 
         self.robot_control.connect_synchronization_callback (self.synchronise_position)
+        self.robot_control.connect_position_reached_callback (self.animate_movement)
 
         ik_tab.link_ik_changed_callback(self.ik_changed_callback)
         ik_tab.link_ik_released_callback(self.ik_released_callback)
@@ -147,6 +149,7 @@ class kinematicManager:
 
     def animate_movement(self):
         self.simulation_protection_time.stop()
+        self.simulation_timer.setInterval(10) #just to make shure position callback doesn't happen here
 
         if self.current_step_index > 0 and self.current_step_index <= self.path.get_length():
             self.elapsed_time += self.path.timestamps[self.current_step_index-1]
@@ -175,13 +178,16 @@ class kinematicManager:
         self.wrapper.rotateRobot(self.ROBOT_IK, *angles)
 
         interval_ms = self.path.timestamps[self.current_step_index] * 1000
+        
+        if self.robot_control.get_robot_status() == RobotStatus.READY:
+            self.robot_control.move_to_position(angles, interval_ms)
+            interval_ms += COMMAND_TIMEOUT_GAP
         self.simulation_timer.setInterval(int(interval_ms))
 
-        self.robot_control.move_to_position(angles, interval_ms)
         
         velocity = self.path.tcp_speed[self.current_step_index]
         self.robot_viewport.status_changed_callback("velocity: {:.1f} mm/s".format(velocity))
-        logger.info(f"step time = {interval_ms}ms, angles diff = {[abs(self.path.joints_angles[self.current_step_index][i] - self.path.joints_angles[self.current_step_index-1][i]) for i in range(6)]}, velocity = {velocity} mm/s") 
+        logger.debug(f"step time = {interval_ms}ms, angles diff = {[abs(self.path.joints_angles[self.current_step_index][i] - self.path.joints_angles[self.current_step_index-1][i]) for i in range(6)]}, velocity = {velocity} mm/s") 
 
         self.current_step_index += 1
         
