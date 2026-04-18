@@ -28,6 +28,8 @@ MAX_ANGLE_SINGLE_MOVE = 20
 COMMAND_TIMEOUT = 100 #ms
 COMMAND_TIMEOUT_GAP = 20 #ms
 
+SET_ANGLE_COMMAND_TIMEOUT = 300 #ms
+
 class robot_control(QtCore.QObject):
     status_updated = QtCore.Signal()
     _data_received_signal = QtCore.Signal(str)
@@ -52,6 +54,8 @@ class robot_control(QtCore.QObject):
 
         self.timeout_timer = QtCore.QTimer()
         self.timeout_timer.timeout.connect(self.command_timeout_callback)
+
+        self.last_command_code = RobotCommands.RESET
 
         # USART callbacks can come from a Python worker thread.
         # Route them into this QObject's thread before touching Qt objects.
@@ -82,6 +86,9 @@ class robot_control(QtCore.QObject):
 
     def get_current_angles(self):
         return self.current_angles
+    
+    def get_last_command_code(self):
+        return self.last_command_code
 
     def command_timeout_callback(self):
         self.robot_status = RobotStatus.TIMEOUT
@@ -118,7 +125,7 @@ class robot_control(QtCore.QObject):
         #     logger.info("command speed to high")
         #     #return False
 
-        status =  self.__send_command(timeout, RobotCommands.SET_ANGLES.value, *int_target_angles) #robot stores angles as millidegrees, convert to degrees
+        status =  self.__send_command(timeout, RobotCommands.SET_ANGLES, *int_target_angles) #robot stores angles as millidegrees, convert to degrees
         
         if status:
             self.desired_angles = [angle / 1000 for angle in int_target_angles]
@@ -132,7 +139,7 @@ class robot_control(QtCore.QObject):
 
     def synchronize_position(self):
         self.robot_desynchronized()
-        self.__send_command(COMMAND_TIMEOUT, RobotCommands.GET_ANGLES.value) #robot stores angles as millidegrees, convert to degrees
+        self.__send_command(COMMAND_TIMEOUT, RobotCommands.GET_ANGLES) #robot stores angles as millidegrees, convert to degrees
 
     def _process_data_received(self, data):
         if data.startswith("cmd "):
@@ -174,7 +181,7 @@ class robot_control(QtCore.QObject):
             self.status_updated.emit()
 
     def emergency_stop(self):
-        self.__send_command(0, RobotCommands.STOP.value)
+        self.__send_command(0, RobotCommands.STOP)
         self.robot_desynchronized()
 
     def _process_usart_status_changed(self, new_status):
@@ -188,23 +195,25 @@ class robot_control(QtCore.QObject):
 
         self.robot_desynchronized()
 
-    def __send_command(self, timeout, command_code: int, param_1: int = None, param_2: int = None, param_3: int = None, param_4: int = None, param_5: int = None, param_6: int = None) -> bool:
+    def __send_command(self, timeout, command_code: RobotCommands, param_1: int = None, param_2: int = None, param_3: int = None, param_4: int = None, param_5: int = None, param_6: int = None) -> bool:
         if self.connection_status != ConnectionStatus.USART_READY:
             return False
 
-        command = "cmd " + str(command_code) + " " + " ".join([str(param)if param is not None else "0" for param in [param_1, param_2, param_3, param_4, param_5, param_6]]) + " " + str(int(timeout*1000)) + " 0x37373737" # time passed in us
+        command = "cmd " + str(int(command_code.value)) + " " + " ".join([str(param)if param is not None else "0" for param in [param_1, param_2, param_3, param_4, param_5, param_6]]) + " " + str(int(timeout*1000)) + " 0x37373737" # time passed in us
 
         status = self.usart_control.send_data(command)
 
         if not status:
             self.connection_status = ConnectionStatus.USART_ERROR
             self.robot_status = RobotStatus.UNKNOWN_POSITION
+            self.last_command_code = RobotCommands.RESET
             self.status_updated.emit()
             return False
 
         if status:
             self.robot_status = RobotStatus.COMMAND_PENDING
-            self.timeout_timer.start(timeout)
+            self.last_command_code = command_code
+            self.timeout_timer.start(timeout + COMMAND_TIMEOUT_GAP)
         else:
             self.robot_desynchronized()
 

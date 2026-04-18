@@ -71,7 +71,6 @@ class kinematicManager:
         self.simulation_protection_time.timeout.connect(self.smooth_animation_callback)
         self.simulation_protection_start_time  = QtCore.QTime.currentTime()
 
-
         self.path = pathStruct()
         self.path_steps = 0
         self.current_step_index = 0
@@ -205,6 +204,7 @@ class kinematicManager:
 
     def abort_motion(self):
         self.path.clear()
+        self.elapsed_time = 0.0
         self.current_step_index = 0
         self.simulation_timer.stop()
         self.simulation_protection_time.stop()
@@ -214,10 +214,15 @@ class kinematicManager:
         self.robot_viewport.status_changed_callback("Motion aborted")
 
     def plan_motion(self, target_pose, movement: MovementType = None, speed = None, acceleration = None,  set_EDGE_ROBOT = False, callback=None):
+        
+        self.abort_motion()
+        
+        
         if valid_pose(*target_pose) not in self.acceptable_simulated_errors:
                 logger.debug("Invalid target pose, skipping IK calculation")
                 return
 
+        
         if set_EDGE_ROBOT:
 
             if movement == MovementType.LINEAR:
@@ -249,11 +254,6 @@ class kinematicManager:
         )
         current_pose = calculate_fk(*current_angles)
 
-        self.path.clear()
-        self.path.append(0, 0, 0, current_pose, [0.0]*6, [0.0]*6, current_angles)
-        self.current_step_index = 0
-        self.elapsed_time = 0.0
-
         tcp_speed = 0
         tcp_acc = 0
 
@@ -264,28 +264,32 @@ class kinematicManager:
             elif movement == MovementType.PTP:
                 speed = self.ANGLE_SPEED
                 acceleration = self.ANGLE_ACCELERATION
+
+        planned_path = pathStruct()
         if movement == MovementType.LINEAR:
-            self.path.sum_paths(self.plan_linear_motion(target_pose, speed, acceleration))
+            planned_path = self.plan_linear_motion(target_pose, speed, acceleration)
             tcp_speed = speed
             tcp_acc = acceleration
 
         elif movement == MovementType.PTP:
-            self.path.sum_paths(self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True))
-
-            if self.path.get_length()!=0:
-                max_tcp_acceleration = max(self.path.tcp_acceleration)
-                min_tcp_acceleration = min(self.path.tcp_acceleration)
+            planned_path = self.plan_ptp_motion(current_angles, target_pose, speed, acceleration, [0.0]*6, [0.0]*6, True)
+            if planned_path.get_length()!=0:
+                max_tcp_acceleration = max(planned_path.tcp_acceleration)
+                min_tcp_acceleration = min(planned_path.tcp_acceleration)
 
                 tcp_divider = max(abs(max_tcp_acceleration), abs(min_tcp_acceleration))
 
-                max_tcp_speed = max(self.path.tcp_speed)
+                max_tcp_speed = max(planned_path.tcp_speed)
 
                 tcp_speed = max_tcp_speed
                 tcp_acc = tcp_divider*2
         
-        if self.path.get_length() == 0:
+        if planned_path.get_length() == 0:
             logger.debug("Motion planning failed, skipping movement")
             return
+
+        self.path.append(0, 0, 0, current_pose, [0.0]*6, [0.0]*6, current_angles)
+        self.path.sum_paths(planned_path)
 
         self.simulation_duration = sum(self.path.timestamps)
 
@@ -300,9 +304,17 @@ class kinematicManager:
 
         self.animation_end_callback = callback
         self.velocity_tab.update_velocity_profiles( self.path, tcp_speed, tcp_acc, MAX_ANGULAR_SPEED, MAX_ANGULAR_ACCELERATION*2, self.simulation_duration)
-
+        
         self.simulation_timer.start()
-        self.animate_movement()
+
+        if (
+            self.robot_control.get_connection_status() == ConnectionStatus.USART_READY
+            and self.robot_control.get_robot_status() == RobotStatus.COMMAND_PENDING
+            and self.robot_control.get_last_command_code() == RobotCommands.SET_ANGLES
+        ):
+            self.simulation_timer.setInterval(SET_ANGLE_COMMAND_TIMEOUT) # just wait until robot end MOTION or timeout happen
+        else:
+            self.animate_movement()
 
     def plan_linear_motion (self, target_pose, speed , acceleration):
         current_angles = (
