@@ -159,6 +159,7 @@ class robot_control(QtCore.QObject):
                         self.position_reached_callback()
                 else:
                     logger.info(f"desired: {self.desired_angles}, current: {angles}")
+                    self.robot_status = RobotStatus.UNKNOWN_POSITION
 
             elif command_code == RobotCommands.RESET.value:
                 self.robot_desynchronized()
