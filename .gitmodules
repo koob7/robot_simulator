@@ -1,0 +1,3 @@
+[submodule "simulator/robot_vision"]
+	path = simulator/robot_vision
+	url = https://github.com/koob7/vision.git
