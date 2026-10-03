@@ -11,6 +11,7 @@ from USART_TAB import USART_TAB
 from programSimulation import ProgramSimulation
 from usart_control import USARTControl
 from robot_control import robot_control, ROBOT_STATUS_TAB
+from ROBOT_VISION_TAB import ROBOT_VISION_TAB
 
 from PySide6.QtCore import QTimer, Signal
 
@@ -91,6 +92,7 @@ class MainWindow(QtWidgets.QSplitter):
         self.program_simulation_tab = ProgramSimulation(self.ik_tab, self.robot_viewport)
         self.robot_control = robot_control(self.usart_control)
         self.robot_status_tab = ROBOT_STATUS_TAB(self.robot_control)
+        self.robot_vision_tab = ROBOT_VISION_TAB(self.robot_control)
 
         self.tabs = ButtonTabWidget()
         self.tabs.add_tab(self.ik_tab, "IK control")
@@ -99,6 +101,7 @@ class MainWindow(QtWidgets.QSplitter):
         self.tabs.add_tab(self.usart_tab, "USART monitor", default_active=True)
         self.tabs.add_tab(self.robot_status_tab, "Robot control", default_active=True)
         self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")
+        self.tabs.add_tab(self.robot_vision_tab, "Robot Vision")
         self.addWidget(self.tabs)
 
 

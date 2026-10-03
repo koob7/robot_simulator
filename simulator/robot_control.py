@@ -265,8 +265,8 @@ class ROBOT_STATUS_TAB(QtWidgets.QWidget):
             self.axis_value_labels.append(axis_value)
 
         main_layout.addWidget(axes_group)
-        main_layout.addStretch(1)
 
+        main_layout.addStretch(1)
         self.emergency_button.clicked.connect(self.robot_control.emergency_stop)
         self.sync_button.clicked.connect(self.robot_control.synchronize_position)
         self.reset_button.clicked.connect(self.robot_control.reset_robot)
