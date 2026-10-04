@@ -186,6 +186,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
     
     def disconnect_from_camera(self):
         if self.vision_worker is not None:
+            self.vision_worker.frame_ready.disconnect(self.update_frames)
             self.vision_worker.stop()
         if self.vision_thread is not None:
             self.vision_thread.quit()
@@ -214,6 +215,8 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
     @QtCore.Slot(object)
     def update_frames(self, pose_and_frames):
         determine_pose_interface, frames = pose_and_frames
+        if determine_pose_interface is not self.determine_pose_interface:
+            return
         if frames is None:
             return
 
@@ -223,13 +226,11 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
 
         if not isinstance(frames, tuple):
             frames = (frames,)
-
+        self.camera_window_names.clear()
         for window_name, frame in zip(camera_names, frames):
             if frame is None:
                 continue
-            scale = 680 / frame.shape[1]
-            display_frame = cv2.resize(frame, None, fx=scale, fy=scale)
-            cv2.imshow(window_name, display_frame)
+            cv2.imshow(window_name, frame)
             self.camera_window_names.add(window_name)
 
         cv2.waitKey(1)
