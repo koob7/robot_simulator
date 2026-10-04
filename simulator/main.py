@@ -98,10 +98,10 @@ class MainWindow(QtWidgets.QSplitter):
         self.tabs.add_tab(self.ik_tab, "IK control")
         self.tabs.add_tab(self.fk_tab, "FK control", default_active=True)
         self.tabs.add_tab(self.velocity_tab, "Velocity chart")
-        self.tabs.add_tab(self.usart_tab, "USART monitor", default_active=True)
-        self.tabs.add_tab(self.robot_status_tab, "Robot control", default_active=True)
+        self.tabs.add_tab(self.usart_tab, "USART monitor")
+        self.tabs.add_tab(self.robot_status_tab, "Robot control")
         self.tabs.add_tab(self.program_simulation_tab, "Program Simulation")
-        self.tabs.add_tab(self.robot_vision_tab, "Robot Vision")
+        self.tabs.add_tab(self.robot_vision_tab, "Robot Vision", default_active=True)
         self.addWidget(self.tabs)
 
 

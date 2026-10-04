@@ -1,3 +1,4 @@
+import cv2
 from PySide6 import QtCore, QtWidgets
 import os
 import robot_vision.config as config
@@ -6,6 +7,37 @@ import robot_control
 
 import robot_vision.single_determine_pose as single_determine_pose
 import robot_vision.stereo_determine_pose as stereo_determine_pose
+
+
+class VisionWorker(QtCore.QObject):
+    result_ready = QtCore.Signal(object)
+    frame_ready = QtCore.Signal(object)
+    error = QtCore.Signal(str)
+    finished = QtCore.Signal()
+
+    def __init__(self, determine_pose_interface):
+        super().__init__()
+        self.determine_pose_interface = determine_pose_interface
+        self.running = True
+
+    @QtCore.Slot()
+    def run(self):
+        try:
+            while self.running and self.determine_pose_interface.is_ready():
+                mean, frames = self.determine_pose_interface.get_mean(10)
+                reached_value = self.determine_robot_qr_pose(mean)
+                self.result_ready.emit(reached_value)
+                self.frame_ready.emit((self.determine_pose_interface, frames))
+        except Exception as exception:
+            self.error.emit(str(exception))
+        finally:
+            self.finished.emit()
+
+    def stop(self):
+        self.running = False
+
+    def determine_robot_qr_pose(self, qr_tab_of_matrix):
+        return 6 * [0.0]
 
 
 class ROBOT_VISION_TAB(QtWidgets.QWidget):
@@ -85,8 +117,9 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
 
         self.determine_pose_interface = None
         self.reached_value = 6*[None]
-        self.mean_timer = QtCore.QTimer(self)
-        self.mean_timer.timeout.connect(self.mean_loop)
+        self.vision_thread = None
+        self.vision_worker = None
+        self.camera_window_names = set()
 
 
     def update_axis_values(self):
@@ -104,18 +137,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
             else:
                 label_reached.setText(f"{angle_reached:.3f}")
 
-
-    def mean_loop(self):
-        if self.determine_pose_interface is None or not self.determine_pose_interface.is_ready():
-            return
-
-        try:
-            mean = self.determine_pose_interface.get_mean(10)
-
-            self.reached_value = self.determine_robot_qr_pose(mean)
-
-        except Exception as e:
-            print(e)
 
     def determine_robot_qr_pose(self, qr_tab_of_matrix):
 
@@ -144,21 +165,78 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
                 name, width, height
             )
 
-        self.mean_timer.start(0)
+        if not self.determine_pose_interface.is_ready():
+            print("Nie można połączyć się z kamerą. Sprawdź połączenie i konfigurację.")
+            return
+
+        self.vision_thread = QtCore.QThread(self)
+        self.vision_worker = VisionWorker(self.determine_pose_interface)
+        self.vision_worker.moveToThread(self.vision_thread)
+        self.vision_thread.started.connect(self.vision_worker.run)
+        self.vision_worker.result_ready.connect(self.update_reached_value)
+        self.vision_worker.frame_ready.connect(self.update_frames)
+        self.vision_worker.error.connect(self.report_vision_error)
+        self.vision_worker.finished.connect(self.vision_thread.quit)
+        self.vision_worker.finished.connect(self.vision_worker.deleteLater)
+        self.vision_thread.finished.connect(self.vision_thread.deleteLater)
+        self.vision_thread.start()
         
         self.toggle_connect_button(True)
         return
     
     def disconnect_from_camera(self):
+        if self.vision_worker is not None:
+            self.vision_worker.stop()
+        if self.vision_thread is not None:
+            self.vision_thread.quit()
+            self.vision_thread.wait()
+
         if self.determine_pose_interface is not None:
             self.determine_pose_interface.__del__()
 
-        self.mean_timer.stop()
+        self.vision_worker = None
+        self.vision_thread = None
+        self.determine_pose_interface = None
+
+        for window_name in self.camera_window_names:
+            cv2.destroyWindow(window_name)
+        self.camera_window_names.clear()
 
         self.reached_value = 6*[None]
         
         self.toggle_connect_button(False)
         return
+
+    @QtCore.Slot(object)
+    def update_reached_value(self, reached_value):
+        self.reached_value = reached_value
+
+    @QtCore.Slot(object)
+    def update_frames(self, pose_and_frames):
+        determine_pose_interface, frames = pose_and_frames
+        if frames is None:
+            return
+
+        camera_names = [determine_pose_interface.camera.get_name()]
+        if hasattr(determine_pose_interface, "camera_right"):
+            camera_names.append(determine_pose_interface.camera_right.get_name())
+
+        if not isinstance(frames, tuple):
+            frames = (frames,)
+
+        for window_name, frame in zip(camera_names, frames):
+            if frame is None:
+                continue
+            scale = 680 / frame.shape[1]
+            display_frame = cv2.resize(frame, None, fx=scale, fy=scale)
+            cv2.imshow(window_name, display_frame)
+            self.camera_window_names.add(window_name)
+
+        cv2.waitKey(1)
+
+    @QtCore.Slot(str)
+    def report_vision_error(self, message):
+        print(message)
     
     def toggle_connect_button(self, connected: bool):
         self.connect_button.setEnabled(not connected)
