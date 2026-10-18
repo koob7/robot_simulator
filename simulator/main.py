@@ -120,5 +120,6 @@ if __name__ == "__main__":
     kinematic_manager = kinematicManager(window.ik_tab, window.fk_tab, window.velocity_tab, window.robot_viewport, window.robot_control)
 
     window.program_simulation_tab.connect_to_kinematic_manager(kinematic_manager)
+    window.robot_vision_tab.connect_to_kinematic_manager(kinematic_manager)
 
     sys.exit(app.exec())

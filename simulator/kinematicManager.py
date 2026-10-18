@@ -35,6 +35,7 @@ class kinematicManager:
         self.ROBOT_FK = 0 #solid color for forward kinematics simulation
         self.ROBOT_IK = 1 #solid color for inverse kinematics simulation
         self.ROBOT_EDGES = 2 #only edges for movement simulation
+        self.ROBOT_CAMERA = 3 #only edges for movement simulation
 
         # Stepper motor parameters
         self.LINEAR_VELOCITY = 30.0     # mm/s (target constant linear velocity)
@@ -53,6 +54,7 @@ class kinematicManager:
 
         self.wrapper.moveRobot(self.ROBOT_FK, 300, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_IK, 0, 0, 0)
+        self.wrapper.moveRobot(self.ROBOT_CAMERA, 300, 0, 0)
         self.wrapper.moveRobot(self.ROBOT_EDGES, 0, 0, 0)
 
         default_pose = (D4+D6, 0, D1+A2, 0, 0, 0)
@@ -64,6 +66,7 @@ class kinematicManager:
         self.wrapper.rotateRobot(self.ROBOT_FK, *default_angles)
         self.wrapper.rotateRobot(self.ROBOT_IK, *default_angles)
         self.wrapper.rotateRobot(self.ROBOT_EDGES, *default_angles)
+        self.wrapper.hideRobot(self.ROBOT_CAMERA)
 
         self.acceptable_simulated_errors = [ValidErrorCode.VALID, ValidErrorCode.WRONG_ANGLES, ValidErrorCode.TARGET_POSE_TOO_CLOSE, ValidErrorCode.WRIST_POSE_TOO_CLOSE]
 
@@ -88,7 +91,14 @@ class kinematicManager:
         self.fk_tab.set_values(int(angles[0]), int(angles[1]), int(angles[2]), int(angles[3]), int(angles[4]), int(angles[5]))
         self.ik_tab.set_values(int(fk_result[0]), int(fk_result[1]), int(fk_result[2]), int(fk_result[3]), int(fk_result[4]), int(fk_result[5]))
 
+    def hide_camera_robot(self):
+        self.wrapper.hideRobot(self.ROBOT_CAMERA)
 
+    def show_camera_robot(self):
+        self.wrapper.showRobot(self.ROBOT_CAMERA)
+
+    def rotate_camera_robot(self, angle_0: float, angle_1: float, angle_2: float, angle_3: float, angle_4: float, angle_5: float):
+        self.wrapper.rotateRobot(self.ROBOT_CAMERA, angle_0, angle_1, angle_2, angle_3, angle_4, angle_5)
 
     def ik_changed_callback(self, _value=None):
         user_position = self.ik_tab.get_values()

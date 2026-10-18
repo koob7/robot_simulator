@@ -4,6 +4,8 @@ import os
 import robot_vision.config as config
 import robot_vision.vision_helper as vision_helper
 import robot_control
+from Wrapper import Wrapper
+from kinematicManager import *
 
 import robot_vision.single_determine_pose as single_determine_pose
 import robot_vision.stereo_determine_pose as stereo_determine_pose
@@ -24,9 +26,10 @@ class VisionWorker(QtCore.QObject):
     def run(self):
         try:
             while self.running and self.determine_pose_interface.is_ready():
-                mean, frames = self.determine_pose_interface.get_mean(10)
-                reached_value = self.determine_robot_qr_pose(mean)
-                self.result_ready.emit(reached_value)
+                markers, frames = self.determine_pose_interface.get_mean(10, default_corrections=False)
+                reached_value = self.determine_robot_qr_pose(markers)
+                if reached_value is not None:
+                    self.result_ready.emit(reached_value)
                 self.frame_ready.emit((self.determine_pose_interface, frames))
         except Exception as exception:
             self.error.emit(str(exception))
@@ -36,14 +39,23 @@ class VisionWorker(QtCore.QObject):
     def stop(self):
         self.running = False
 
-    def determine_robot_qr_pose(self, qr_tab_of_matrix):
-        return 6 * [0.0]
+    def determine_robot_qr_pose(self, markers):
+        if markers is None:
+            return None
+        pose = vision_helper.get_marker_mutal_pose_YZ(markers, pairs=[(54, 56)])
+        if pose is None:
+            return None
+        pose_53_50 = pose.get((54, 56))
+        if pose_53_50 is None:
+            return None
+        # return pose_53_50[3], pose_53_50[4]
+        return list(pose_53_50[0:3]) + 3 * [None]
 
 
 class ROBOT_VISION_TAB(QtWidgets.QWidget):
     def __init__(self, robot_control: robot_control, parent=None):
         super().__init__()
-
+        self.wrapper = Wrapper()
         self.robot_control = robot_control
 
         camera_lists = []
@@ -120,27 +132,31 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.vision_thread = None
         self.vision_worker = None
         self.camera_window_names = set()
+        self.kinematic_manager = None
 
+    def connect_to_kinematic_manager(self, kinematic_manager):
+        self.kinematic_manager = kinematic_manager
 
     def update_axis_values(self):
         target_angles = self.robot_control.get_current_angles()#target - bo teoretycznie takie są (robot tak twierdzi)
-        for idx, label_target, label_reached in enumerate(self.target_value_labels, self.reached_value_labels):
-            angle_target = target_angles[idx]
-            angle_reached = self.reached_value[idx]
-            if angle_target is None:
+        if target_angles[0] is None:
+            target_pose = 6*[None]
+        else:
+            target_pose = calculate_fk(*target_angles) if target_angles is not None else 6*[None]
+        for idx, (label_target, label_reached) in enumerate(
+            zip(self.target_value_labels, self.reached_value_labels)
+        ):
+            pose_target = target_pose[idx]
+            pose_reached = self.reached_value[idx]
+            if pose_target is None:
                 label_target.setText("-")
             else:
-                label_target.setText(f"{angle_target:.3f}")
+                label_target.setText(f"{pose_target:.3f}")
             
-            if angle_reached is None:
+            if pose_reached is None:
                 label_reached.setText("-")
             else:
-                label_reached.setText(f"{angle_reached:.3f}")
-
-
-    def determine_robot_qr_pose(self, qr_tab_of_matrix):
-
-        return 6*[0.0]
+                label_reached.setText(f"{pose_reached:.3f}")
 
     def connect_to_camera(self):
 
@@ -182,6 +198,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.vision_thread.start()
         
         self.toggle_connect_button(True)
+        self.kinematic_manager.show_camera_robot()
         return
     
     def disconnect_from_camera(self):
@@ -204,13 +221,28 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.camera_window_names.clear()
 
         self.reached_value = 6*[None]
+        self.update_axis_values()
         
         self.toggle_connect_button(False)
+        self.kinematic_manager.hide_camera_robot()
         return
 
     @QtCore.Slot(object)
     def update_reached_value(self, reached_value):
         self.reached_value = reached_value
+        x = self.reached_value[0] *1000
+        z = self.reached_value[1] *1000
+        y = self.reached_value[2] *1000
+        self.reached_value[0] = x
+        self.reached_value[1] = y
+        self.reached_value[2] = -z
+        self.reached_value[3] = 1.0  # Set the fourth axis value to 0.0
+        self.reached_value[4] = 1.0  # Set the fifth axis
+        self.reached_value[5] = 1.0  # Set the sixth axis value to 0.0
+        self.update_axis_values()
+
+        degrees = calculate_ik(*self.reached_value)
+        self.kinematic_manager.rotate_camera_robot(*degrees)
 
     @QtCore.Slot(object)
     def update_frames(self, pose_and_frames):
@@ -247,5 +279,4 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
     
                 
             
-
 
