@@ -77,8 +77,9 @@ def pose_from_transform(T: np.ndarray, degrees: bool = True) -> tuple[float, flo
 
     den = np.sqrt(R[0, 0] ** 2 + R[0, 1] ** 2)
 
-    b_ang = np.arctan2(R[0, 2], den)
+    #Tait-Bryan angles X-Y-Z
     a_ang = np.arctan2(-R[1, 2], R[2, 2])
+    b_ang = np.arctan2(R[0, 2], den)
     c_ang = np.arctan2(-R[0, 1], R[0, 0])
 
 

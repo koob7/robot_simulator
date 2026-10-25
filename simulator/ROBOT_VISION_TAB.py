@@ -42,14 +42,14 @@ class VisionWorker(QtCore.QObject):
     def determine_robot_qr_pose(self, markers):
         if markers is None:
             return None
-        pose = vision_helper.get_marker_mutal_pose_YZ(markers, pairs=[(54, 56)])
+        pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
         if pose is None:
             return None
         pose_53_50 = pose.get((54, 56))
         if pose_53_50 is None:
             return None
         # return pose_53_50[3], pose_53_50[4]
-        return list(pose_53_50[0:3]) + 3 * [None]
+        return list(pose_53_50[0:6])
 
 
 class ROBOT_VISION_TAB(QtWidgets.QWidget):
@@ -233,12 +233,20 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         x = self.reached_value[0] *1000
         z = self.reached_value[1] *1000
         y = self.reached_value[2] *1000
-        self.reached_value[0] = x
-        self.reached_value[1] = y
+        self.reached_value[0] = -y
+        self.reached_value[1] = x
         self.reached_value[2] = -z
-        self.reached_value[3] = 1.0  # Set the fourth axis value to 0.0
-        self.reached_value[4] = 1.0  # Set the fifth axis
-        self.reached_value[5] = 1.0  # Set the sixth axis value to 0.0
+        roll = self.reached_value[3]
+        pich = self.reached_value[4]
+        yaw  = self.reached_value[5]
+
+        self.reached_value[3] = yaw
+        self.reached_value[4] = roll
+        self.reached_value[5] = pich
+
+        # self.reached_value[3] = 1.0  # Set the fourth axis value to 0.0
+        # self.reached_value[4] = 1.0  # Set the fifth axis
+        # self.reached_value[5] = 1.0  # Set the sixth axis value to 0.0
         self.update_axis_values()
 
         degrees = calculate_ik(*self.reached_value)
