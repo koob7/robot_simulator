@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 from PySide6 import QtCore, QtWidgets
 import os
 import robot_vision.config as config
@@ -26,7 +27,8 @@ class VisionWorker(QtCore.QObject):
     def run(self):
         try:
             while self.running and self.determine_pose_interface.is_ready():
-                markers, frames = self.determine_pose_interface.get_mean(10, default_corrections=False)
+                # markers, frames = self.determine_pose_interface.get_mean(10, default_corrections=False)
+                markers, frames = self.determine_pose_interface.find_markers(default_corrections=False)
                 reached_value = self.determine_robot_qr_pose(markers)
                 if reached_value is not None:
                     self.result_ready.emit(reached_value)
@@ -57,6 +59,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         super().__init__()
         self.wrapper = Wrapper()
         self.robot_control = robot_control
+        self.tip_pose = None
 
         camera_lists = []
         result_path = f"simulator/robot_vision/{config.calib_results_path}"
@@ -233,13 +236,58 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         x = self.reached_value[0] *1000
         z = self.reached_value[1] *1000
         y = self.reached_value[2] *1000
-        self.reached_value[0] = -y
-        self.reached_value[1] = x
-        self.reached_value[2] = -z
         roll = self.reached_value[3]
         pich = self.reached_value[4]
         yaw  = self.reached_value[5]
 
+        self.tip_pose = (self.reached_value[0], self.reached_value[1], self.reached_value[2], self.reached_value[3], self.reached_value[4], self.reached_value[5])
+
+        # tutaj trzeba sprawdzić który marker docelowy wybraliśmy a następnie przesunąć jego środek do końcówki robota
+        # rotacja powinna zdostosowana w zależności od tego w którym miejscu marker został zamontowany na kostce robota
+        # przypadek markerów 54, 56 jest najprostszy bo zakłada że magnes jest naklejony na czubku robota (zgodnie z osią obrotu osi 6)
+
+    # phi = phi_in*np.pi/180
+    # beta = beta_in*np.pi/180
+    # psi = psi_in*np.pi/180
+
+    # c_alfa, s_alfa = np.cos(phi), np.sin(phi)
+    # c_beta, s_beta = np.cos(beta), np.sin(beta)
+    # c_delta, s_delta = np.cos(psi), np.sin(psi)
+
+    # em = np.eye(3)
+    # P = np.array([
+    #     [0, 0, 1],
+    #     [1, 0, 0],
+    #     [0, 1, 0],
+    # ])
+
+
+    # #XYZ
+    # em[0, 0] = c_beta * c_delta
+    # em[0, 1] = -c_beta * s_delta
+    # em[0, 2] = s_beta
+
+    # em[1, 0] = c_alfa * s_delta + c_delta * s_alfa * s_beta
+    # em[1, 1] = c_alfa * c_delta - s_alfa * s_beta * s_delta
+    # em[1, 2] = -s_alfa * c_beta
+
+    # em[2, 0] = s_alfa * s_delta - c_alfa * c_delta * s_beta
+    # em[2, 1] = c_delta * s_alfa + c_alfa * s_beta * s_delta
+    # em[2, 2] = c_alfa * c_beta
+
+    # # wyrównanie układów współrzędnych względem siebie
+    # em = em @ P
+
+    # # Pozycja nadgarstka
+    # Wx = x - D6 * em[0, 2]
+    # Wy = y - D6 * em[1, 2]
+    # Wz = z - D6 * em[2, 2]
+
+
+
+        self.reached_value[0] = -y
+        self.reached_value[1] = x
+        self.reached_value[2] = -z
         self.reached_value[3] = yaw
         self.reached_value[4] = roll
         self.reached_value[5] = pich
@@ -264,6 +312,38 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         if hasattr(determine_pose_interface, "camera_right"):
             camera_names.append(determine_pose_interface.camera_right.get_name())
 
+
+        if (hasattr(determine_pose_interface, "camera_right")) and (self.tip_pose is not None):
+            self.draw_point(
+                frames[0],
+                self.tip_pose[0],
+                self.tip_pose[1],
+                self.tip_pose[2],
+                determine_pose_interface.camera.get_camera_matrix(),
+                determine_pose_interface.camera.get_dist_coeffs(),
+                determine_pose_interface.camera.get_scale_factor()
+            )
+            self.draw_point(
+                frames[1],
+                self.tip_pose[0],
+                self.tip_pose[1],
+                self.tip_pose[2],
+                determine_pose_interface.camera_right.get_camera_matrix(),
+                determine_pose_interface.camera_right.get_dist_coeffs(),
+                determine_pose_interface.camera_right.get_scale_factor()
+            )
+        elif (self.tip_pose is not None):
+            self.draw_point(
+                frames[0],
+                self.tip_pose[0],
+                self.tip_pose[1],
+                self.tip_pose[2],
+                determine_pose_interface.camera.get_camera_matrix(),
+                determine_pose_interface.camera.get_dist_coeffs(),
+                determine_pose_interface.camera.get_scale_factor()
+            )
+
+
         if not isinstance(frames, tuple):
             frames = (frames,)
         self.camera_window_names.clear()
@@ -283,8 +363,35 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.connect_button.setEnabled(not connected)
         self.disconnect_button.setEnabled(connected)
 
+    def draw_point(self, frame, x, y, z, camera_matrix, dist_coeffs, scale_factor):
+        if z <= 0:
+            return frame
 
-    
-                
-            
+        point_3d = np.array([[x, y, z]], dtype=np.float32)
+        points_2d, _ = cv2.projectPoints(
+            point_3d,
+            np.zeros((3, 1), dtype=np.float32),
+            np.zeros((3, 1), dtype=np.float32),
+            camera_matrix,
+            dist_coeffs
+        )
 
+        px, py = np.asarray(points_2d, dtype=np.float64).reshape(-1, 2)[0]
+        px *= float(scale_factor)
+        py *= float(scale_factor)
+        if not np.isfinite(px) or not np.isfinite(py):
+            return frame
+
+        frame_height, frame_width = frame.shape[:2]
+        center = (
+            int(np.clip(round(px), 0, frame_width - 1)),
+            int(np.clip(round(py), 0, frame_height - 1)),
+        )
+        cv2.circle(
+            frame,
+            center,
+            5,
+            (0, 0, 255),
+            -1
+        )
+        return frame
