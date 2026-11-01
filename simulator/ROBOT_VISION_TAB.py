@@ -7,6 +7,7 @@ import robot_vision.vision_helper as vision_helper
 import robot_control
 from Wrapper import Wrapper
 from kinematicManager import *
+from scipy.spatial.transform import Rotation as Rot
 
 import robot_vision.single_determine_pose as single_determine_pose
 import robot_vision.stereo_determine_pose as stereo_determine_pose
@@ -29,9 +30,8 @@ class VisionWorker(QtCore.QObject):
             while self.running and self.determine_pose_interface.is_ready():
                 # markers, frames = self.determine_pose_interface.get_mean(10, default_corrections=False)
                 markers, frames = self.determine_pose_interface.find_markers(default_corrections=False)
-                reached_value = self.determine_robot_qr_pose(markers)
-                if reached_value is not None:
-                    self.result_ready.emit(reached_value)
+                if markers is not None:
+                    self.result_ready.emit(markers)
                 self.frame_ready.emit((self.determine_pose_interface, frames))
         except Exception as exception:
             self.error.emit(str(exception))
@@ -40,19 +40,6 @@ class VisionWorker(QtCore.QObject):
 
     def stop(self):
         self.running = False
-
-    def determine_robot_qr_pose(self, markers):
-        if markers is None:
-            return None
-        pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
-        if pose is None:
-            return None
-        pose_53_50 = pose.get((54, 56))
-        if pose_53_50 is None:
-            return None
-        # return pose_53_50[3], pose_53_50[4]
-        return list(pose_53_50[0:6])
-
 
 class ROBOT_VISION_TAB(QtWidgets.QWidget):
     def __init__(self, robot_control: robot_control, parent=None):
@@ -231,7 +218,23 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         return
 
     @QtCore.Slot(object)
-    def update_reached_value(self, reached_value):
+    def update_reached_value(self, markers):
+        if markers is None:
+            return
+
+        marker_54_pose = markers.get(54)
+        if marker_54_pose is not None:
+            tvec_54 = marker_54_pose["qr_tvec"].reshape(3)
+            R_54 = marker_54_pose["qr_R"]
+            rot_54 = Rot.from_matrix(R_54).as_euler('xyz')
+            self.tip_pose = (tvec_54[0], tvec_54[1], tvec_54[2], rot_54[0], rot_54[1], rot_54[2])
+        
+        pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
+        reached_value = pose.get((54, 56))
+        if reached_value is None:
+            return
+
+        reached_value = list(reached_value)
         self.reached_value = reached_value
         x = self.reached_value[0] *1000
         z = self.reached_value[1] *1000
@@ -240,7 +243,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         pich = self.reached_value[4]
         yaw  = self.reached_value[5]
 
-        self.tip_pose = (self.reached_value[0], self.reached_value[1], self.reached_value[2], self.reached_value[3], self.reached_value[4], self.reached_value[5])
 
         # tutaj trzeba sprawdzić który marker docelowy wybraliśmy a następnie przesunąć jego środek do końcówki robota
         # rotacja powinna zdostosowana w zależności od tego w którym miejscu marker został zamontowany na kostce robota
@@ -308,13 +310,17 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         if frames is None:
             return
 
+        if not isinstance(frames, (tuple, list)):
+            frames = (frames,)
+        frames = list(frames)
+
         camera_names = [determine_pose_interface.camera.get_name()]
         if hasattr(determine_pose_interface, "camera_right"):
             camera_names.append(determine_pose_interface.camera_right.get_name())
 
 
         if (hasattr(determine_pose_interface, "camera_right")) and (self.tip_pose is not None):
-            self.draw_point(
+            frames[0] = self.draw_point(
                 frames[0],
                 self.tip_pose[0],
                 self.tip_pose[1],
@@ -323,7 +329,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
                 determine_pose_interface.camera.get_dist_coeffs(),
                 determine_pose_interface.camera.get_scale_factor()
             )
-            self.draw_point(
+            frames[1] = self.draw_point(
                 frames[1],
                 self.tip_pose[0],
                 self.tip_pose[1],
@@ -333,7 +339,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
                 determine_pose_interface.camera_right.get_scale_factor()
             )
         elif (self.tip_pose is not None):
-            self.draw_point(
+            frames[0] = self.draw_point(
                 frames[0],
                 self.tip_pose[0],
                 self.tip_pose[1],
@@ -343,9 +349,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
                 determine_pose_interface.camera.get_scale_factor()
             )
 
-
-        if not isinstance(frames, tuple):
-            frames = (frames,)
         self.camera_window_names.clear()
         for window_name, frame in zip(camera_names, frames):
             if frame is None:
