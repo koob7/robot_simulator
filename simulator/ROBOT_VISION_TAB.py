@@ -67,6 +67,12 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
             if left_name in left_names and right_name in right_names:
                 camera_lists.append(f"{result_path}/stereo/{name}")
 
+        default_camera_list = (
+            f"{result_path}/single/mx_brio_for_business_1920_1080px"
+        )
+        if default_camera_list in camera_lists:
+            camera_lists.remove(default_camera_list)
+            camera_lists.insert(0, default_camera_list)
 
         for camera_list in camera_lists:
             print(f"Found camera list: {camera_list}")
@@ -222,17 +228,39 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         if markers is None:
             return
 
-        marker_54_pose = markers.get(54)
-        if marker_54_pose is not None:
-            tvec_54 = marker_54_pose["qr_tvec"].reshape(3)
-            R_54 = marker_54_pose["qr_R"]
-            rot_54 = Rot.from_matrix(R_54).as_euler('xyz')
-            self.tip_pose = (tvec_54[0], tvec_54[1], tvec_54[2], rot_54[0], rot_54[1], rot_54[2])
+        original_pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
+        original_reached_value = original_pose.get((54, 56))
+
+        marker_56_pose = markers.get(56)
+        if marker_56_pose is not None:
+            tvec_56 = marker_56_pose["qr_tvec"].reshape(3)
+            R_56 = marker_56_pose["qr_R"]
+            rot_56 = Rot.from_matrix(R_56).as_euler('xyz')
+
+            #przesunięcie w osi Z - niebieskiej
+            tvec_56[0] -= 55/1000 * R_56[0, 2]
+            tvec_56[1] -= 55/1000 * R_56[1, 2]
+            tvec_56[2] -= 55/1000 * R_56[2, 2]
+
+            #przesunięcie w osi Y - zielonej
+            tvec_56[0] -= 25/1000 * R_56[0, 1]
+            tvec_56[1] -= 25/1000 * R_56[1, 1]
+            tvec_56[2] -= 25/1000 * R_56[2, 1]
+
+            # przesunięcie w osi X - czerwonej
+            tvec_56[0] -= 25/1000 * R_56[0, 0]
+            tvec_56[1] -= 25/1000 * R_56[1, 0]
+            tvec_56[2] -= 25/1000 * R_56[2, 0]
+            self.tip_pose = (tvec_56[0], tvec_56[1], tvec_56[2], rot_56[0], rot_56[1], rot_56[2])
+            markers[56]["qr_tvec"] = tvec_56
         
         pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
         reached_value = pose.get((54, 56))
         if reached_value is None:
             return
+
+        text = f"rehed poose t:original x {original_reached_value[0]:.2f} y {original_reached_value[1]:.2f} z {original_reached_value[2]:.2f} |reached pose t: x {reached_value[0]:.2f} y {reached_value[1]:.2f} z {reached_value[2]:.2f}"
+        print(text)
 
         reached_value = list(reached_value)
         self.reached_value = reached_value
@@ -265,16 +293,9 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
 
 
     # #XYZ
-    # em[0, 0] = c_beta * c_delta
-    # em[0, 1] = -c_beta * s_delta
     # em[0, 2] = s_beta
-
-    # em[1, 0] = c_alfa * s_delta + c_delta * s_alfa * s_beta
-    # em[1, 1] = c_alfa * c_delta - s_alfa * s_beta * s_delta
     # em[1, 2] = -s_alfa * c_beta
 
-    # em[2, 0] = s_alfa * s_delta - c_alfa * c_delta * s_beta
-    # em[2, 1] = c_delta * s_alfa + c_alfa * s_beta * s_delta
     # em[2, 2] = c_alfa * c_beta
 
     # # wyrównanie układów współrzędnych względem siebie
@@ -287,9 +308,9 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
 
 
 
-        self.reached_value[0] = -y
+        self.reached_value[0] = y
         self.reached_value[1] = x
-        self.reached_value[2] = -z
+        self.reached_value[2] = z
         self.reached_value[3] = yaw
         self.reached_value[4] = roll
         self.reached_value[5] = pich
