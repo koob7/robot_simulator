@@ -340,35 +340,15 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
             camera_names.append(determine_pose_interface.camera_right.get_name())
 
 
-        if (hasattr(determine_pose_interface, "camera_right")) and (self.tip_pose is not None):
-            frames[0] = self.draw_point(
-                frames[0],
-                self.tip_pose[0],
-                self.tip_pose[1],
-                self.tip_pose[2],
-                determine_pose_interface.camera.get_camera_matrix(),
-                determine_pose_interface.camera.get_dist_coeffs(),
-                determine_pose_interface.camera.get_scale_factor()
-            )
-            frames[1] = self.draw_point(
-                frames[1],
-                self.tip_pose[0],
-                self.tip_pose[1],
-                self.tip_pose[2],
-                determine_pose_interface.camera_right.get_camera_matrix(),
-                determine_pose_interface.camera_right.get_dist_coeffs(),
-                determine_pose_interface.camera_right.get_scale_factor()
-            )
-        elif (self.tip_pose is not None):
-            frames[0] = self.draw_point(
-                frames[0],
-                self.tip_pose[0],
-                self.tip_pose[1],
-                self.tip_pose[2],
-                determine_pose_interface.camera.get_camera_matrix(),
-                determine_pose_interface.camera.get_dist_coeffs(),
-                determine_pose_interface.camera.get_scale_factor()
-            )
+        frames[0] = self.draw_point(#rysowanie kropki ma sens tylko dla kamery pierwszej - bo ona nadaje układ współrzędnych
+            frames[0],
+            self.tip_pose[0],
+            self.tip_pose[1],
+            self.tip_pose[2],
+            determine_pose_interface.camera.get_camera_matrix(),
+            determine_pose_interface.camera.get_dist_coeffs(),
+            determine_pose_interface.camera.get_scale_factor()
+        )
 
         self.camera_window_names.clear()
         for window_name, frame in zip(camera_names, frames):
