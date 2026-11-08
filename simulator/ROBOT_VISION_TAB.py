@@ -228,8 +228,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         if markers is None:
             return
 
-        original_pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
-        original_reached_value = original_pose.get((54, 56))
 
         marker_56_pose = markers.get(56)
         if marker_56_pose is not None:
@@ -259,9 +257,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         if reached_value is None:
             return
 
-        text = f"rehed poose t:original x {original_reached_value[0]:.2f} y {original_reached_value[1]:.2f} z {original_reached_value[2]:.2f} |reached pose t: x {reached_value[0]:.2f} y {reached_value[1]:.2f} z {reached_value[2]:.2f}"
-        print(text)
-
         reached_value = list(reached_value)
         self.reached_value = reached_value
         x = self.reached_value[0] *1000
@@ -276,38 +271,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         # rotacja powinna zdostosowana w zależności od tego w którym miejscu marker został zamontowany na kostce robota
         # przypadek markerów 54, 56 jest najprostszy bo zakłada że magnes jest naklejony na czubku robota (zgodnie z osią obrotu osi 6)
 
-    # phi = phi_in*np.pi/180
-    # beta = beta_in*np.pi/180
-    # psi = psi_in*np.pi/180
-
-    # c_alfa, s_alfa = np.cos(phi), np.sin(phi)
-    # c_beta, s_beta = np.cos(beta), np.sin(beta)
-    # c_delta, s_delta = np.cos(psi), np.sin(psi)
-
-    # em = np.eye(3)
-    # P = np.array([
-    #     [0, 0, 1],
-    #     [1, 0, 0],
-    #     [0, 1, 0],
-    # ])
-
-
-    # #XYZ
-    # em[0, 2] = s_beta
-    # em[1, 2] = -s_alfa * c_beta
-
-    # em[2, 2] = c_alfa * c_beta
-
-    # # wyrównanie układów współrzędnych względem siebie
-    # em = em @ P
-
-    # # Pozycja nadgarstka
-    # Wx = x - D6 * em[0, 2]
-    # Wy = y - D6 * em[1, 2]
-    # Wz = z - D6 * em[2, 2]
-
-
-
         self.reached_value[0] = y
         self.reached_value[1] = x
         self.reached_value[2] = z
@@ -315,9 +278,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.reached_value[4] = roll
         self.reached_value[5] = pich
 
-        # self.reached_value[3] = 1.0  # Set the fourth axis value to 0.0
-        # self.reached_value[4] = 1.0  # Set the fifth axis
-        # self.reached_value[5] = 1.0  # Set the sixth axis value to 0.0
         self.update_axis_values()
 
         degrees = calculate_ik(*self.reached_value)
