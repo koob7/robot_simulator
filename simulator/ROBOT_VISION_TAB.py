@@ -29,7 +29,7 @@ class VisionWorker(QtCore.QObject):
         try:
             while self.running and self.determine_pose_interface.is_ready():
                 # markers, frames = self.determine_pose_interface.get_mean(10, default_corrections=False)
-                markers, frames = self.determine_pose_interface.find_markers(default_corrections=False)
+                markers, frames = self.determine_pose_interface.find_markers(default_corrections=True)
                 if markers is not None:
                     self.result_ready.emit(markers)
                 self.frame_ready.emit((self.determine_pose_interface, frames))
@@ -228,32 +228,31 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         if markers is None:
             return
 
-
-        marker_56_pose = markers.get(56)
-        if marker_56_pose is not None:
-            tvec_56 = marker_56_pose["qr_tvec"].reshape(3)
-            R_56 = marker_56_pose["qr_R"]
-            rot_56 = Rot.from_matrix(R_56).as_euler('xyz')
+        marker_62_pose = markers.get(62)
+        if marker_62_pose is not None:
+            tvec_62 = marker_62_pose["qr_tvec"].reshape(3)
+            R_62 = marker_62_pose["qr_R"]
+            rot_62 = Rot.from_matrix(R_62).as_euler('xyz')
 
             #przesunięcie w osi Z - niebieskiej
-            tvec_56[0] -= 55/1000 * R_56[0, 2]
-            tvec_56[1] -= 55/1000 * R_56[1, 2]
-            tvec_56[2] -= 55/1000 * R_56[2, 2]
+            tvec_62[0] -= 55/1000 * R_62[0, 2]
+            tvec_62[1] -= 55/1000 * R_62[1, 2]
+            tvec_62[2] -= 55/1000 * R_62[2, 2]
 
             #przesunięcie w osi Y - zielonej
-            tvec_56[0] -= 25/1000 * R_56[0, 1]
-            tvec_56[1] -= 25/1000 * R_56[1, 1]
-            tvec_56[2] -= 25/1000 * R_56[2, 1]
+            tvec_62[0] += 25/1000 * R_62[0, 1]
+            tvec_62[1] += 25/1000 * R_62[1, 1]
+            tvec_62[2] += 25/1000 * R_62[2, 1]
 
             # przesunięcie w osi X - czerwonej
-            tvec_56[0] -= 25/1000 * R_56[0, 0]
-            tvec_56[1] -= 25/1000 * R_56[1, 0]
-            tvec_56[2] -= 25/1000 * R_56[2, 0]
-            self.tip_pose = (tvec_56[0], tvec_56[1], tvec_56[2], rot_56[0], rot_56[1], rot_56[2])
-            markers[56]["qr_tvec"] = tvec_56
+            tvec_62[0] -= 25/1000 * R_62[0, 0]
+            tvec_62[1] -= 25/1000 * R_62[1, 0]
+            tvec_62[2] -= 25/1000 * R_62[2, 0]
+            self.tip_pose = (tvec_62[0], tvec_62[1], tvec_62[2], rot_62[0], rot_62[1], rot_62[2])
+            markers[62]["qr_tvec"] = tvec_62
         
-        pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 56)])
-        reached_value = pose.get((54, 56))
+        pose = vision_helper.get_marker_mutal_pose_XYZ(markers, pairs=[(54, 62)])
+        reached_value = pose.get((54, 62))
         if reached_value is None:
             return
 
@@ -269,7 +268,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
 
         # tutaj trzeba sprawdzić który marker docelowy wybraliśmy a następnie przesunąć jego środek do końcówki robota
         # rotacja powinna zdostosowana w zależności od tego w którym miejscu marker został zamontowany na kostce robota
-        # przypadek markerów 54, 56 jest najprostszy bo zakłada że magnes jest naklejony na czubku robota (zgodnie z osią obrotu osi 6)
+        # przypadek markerów 54, 62 jest najprostszy bo zakłada że magnes jest naklejony na czubku robota (zgodnie z osią obrotu osi 6)
 
         self.reached_value[0] = y
         self.reached_value[1] = x
@@ -300,15 +299,16 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
             camera_names.append(determine_pose_interface.camera_right.get_name())
 
 
-        frames[0] = self.draw_point(#rysowanie kropki ma sens tylko dla kamery pierwszej - bo ona nadaje układ współrzędnych
-            frames[0],
-            self.tip_pose[0],
-            self.tip_pose[1],
-            self.tip_pose[2],
-            determine_pose_interface.camera.get_camera_matrix(),
-            determine_pose_interface.camera.get_dist_coeffs(),
-            determine_pose_interface.camera.get_scale_factor()
-        )
+        if (self.tip_pose is not None):
+            frames[0] = self.draw_point(#rysowanie kropki ma sens tylko dla kamery pierwszej - bo ona nadaje układ współrzędnych
+                frames[0],
+                self.tip_pose[0],
+                self.tip_pose[1],
+                self.tip_pose[2],
+                determine_pose_interface.camera.get_camera_matrix(),
+                determine_pose_interface.camera.get_dist_coeffs(),
+                determine_pose_interface.camera.get_scale_factor()
+            )
 
         self.camera_window_names.clear()
         for window_name, frame in zip(camera_names, frames):
