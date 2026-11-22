@@ -2,4 +2,6 @@
 /example/__pycache__
 /simulator/__pycache__
 /build
+/.tools
+/tests
 robot_simulator.spec

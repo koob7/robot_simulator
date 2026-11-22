@@ -47,6 +47,7 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.wrapper = Wrapper()
         self.robot_control = robot_control
         self.tip_pose = None
+        self.base_pose = None
 
         camera_lists = []
         result_path = f"simulator/robot_vision/{config.calib_results_path}"
@@ -100,27 +101,72 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.disconnect_button.setEnabled(False)
         self.main_layout.addWidget(self.disconnect_button)
 
-        self.reached_value_labels = []
-        self.target_value_labels = []
+        self.pose_table_headers = [
+            "Axis",
+            "Target",
+            "Camera",
+            "Difference",
+        ]
+        self.target_source = "unknown"
+        self.pose_table_names = ["X", "Y", "Z", "Roll", "Pitch", "Yaw"]
+        self.pose_table_units = ["mm", "mm", "mm", "deg", "deg", "deg"]
+        self.camera_tip_angles = [None] * 6
+        self.camera_direct_angles = [None] * 6
 
-        axes_group = QtWidgets.QGroupBox("Axis rotations [deg]")
-        axes_layout = QtWidgets.QGridLayout(axes_group)
+        self.pose_table = QtWidgets.QTableWidget(6, len(self.pose_table_headers))
+        self.pose_table.setHorizontalHeaderLabels(self.pose_table_headers)
+        self.pose_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.pose_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.pose_table.verticalHeader().setVisible(False)
+        self.pose_table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.pose_table.setAlternatingRowColors(True)
+        self.pose_table.setMinimumWidth(500)
 
-        axes_layout.addWidget(QtWidgets.QLabel("Axis"), 0, 0)
-        axes_layout.addWidget(QtWidgets.QLabel("Reached"), 0, 1)
-        axes_layout.addWidget(QtWidgets.QLabel("Target"), 0, 2)
+        for idx, (name, unit) in enumerate(zip(self.pose_table_names, self.pose_table_units)):
+            axis_item = QtWidgets.QTableWidgetItem(f"{name} [{unit}]")
+            axis_item.setFlags(axis_item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            self.pose_table.setItem(idx, 0, axis_item)
+            for column in range(1, len(self.pose_table_headers)):
+                value_item = QtWidgets.QTableWidgetItem("-")
+                value_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                self.pose_table.setItem(idx, column, value_item)
 
-        for idx in range(1, 7):
-            axis_name = QtWidgets.QLabel(f"Axis {idx}")
-            reached_value = QtWidgets.QLabel("-")
-            target_value = QtWidgets.QLabel("-")
-            axes_layout.addWidget(axis_name, idx, 0)
-            axes_layout.addWidget(reached_value, idx, 1)
-            axes_layout.addWidget(target_value, idx, 2)
-            self.reached_value_labels.append(reached_value)
-            self.target_value_labels.append(target_value)
+        pose_group = QtWidgets.QGroupBox("Pose comparison")
+        pose_layout = QtWidgets.QVBoxLayout(pose_group)
+        pose_layout.addWidget(self.pose_table)
+        self.main_layout.addWidget(pose_group)
 
-        self.main_layout.addWidget(axes_group)
+        self.angle_table_headers = [
+            "Axis",
+            "Target",
+            "Camera tip",
+            "Camera direct",
+            "Diff tip",
+            "Diff direct",
+        ]
+        self.angle_table = QtWidgets.QTableWidget(6, len(self.angle_table_headers))
+        self.angle_table.setHorizontalHeaderLabels(self.angle_table_headers)
+        self.angle_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.angle_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.angle_table.verticalHeader().setVisible(False)
+        self.angle_table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.angle_table.setAlternatingRowColors(True)
+        self.angle_table.setMinimumWidth(720)
+
+        for idx in range(6):
+            axis_item = QtWidgets.QTableWidgetItem(f"Axis {idx + 1}")
+            axis_item.setFlags(axis_item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            self.angle_table.setItem(idx, 0, axis_item)
+            for column in range(1, len(self.angle_table_headers)):
+                value_item = QtWidgets.QTableWidgetItem("-")
+                value_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                self.angle_table.setItem(idx, column, value_item)
+
+        angle_group = QtWidgets.QGroupBox("Axis angles [deg]")
+        angle_layout = QtWidgets.QVBoxLayout(angle_group)
+        angle_layout.addWidget(self.angle_table)
+        self.main_layout.addWidget(angle_group)
+
         self.robot_control.status_updated.connect(self.update_axis_values)
 
         self.determine_pose_interface = None
@@ -134,25 +180,78 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.kinematic_manager = kinematic_manager
 
     def update_axis_values(self):
-        target_angles = self.robot_control.get_current_angles()#target - bo teoretycznie takie są (robot tak twierdzi)
-        if target_angles[0] is None:
-            target_pose = 6*[None]
+        target_angles = self.robot_control.get_current_angles()
+        if target_angles is not None and all(angle is not None for angle in target_angles):
+            self.target_source = "device"
+        elif self.kinematic_manager is not None:
+            target_angles = (
+                self.kinematic_manager.wrapper.actual_angle_0[self.kinematic_manager.ROBOT_IK],
+                self.kinematic_manager.wrapper.actual_angle_1[self.kinematic_manager.ROBOT_IK],
+                self.kinematic_manager.wrapper.actual_angle_2[self.kinematic_manager.ROBOT_IK],
+                self.kinematic_manager.wrapper.actual_angle_3[self.kinematic_manager.ROBOT_IK],
+                self.kinematic_manager.wrapper.actual_angle_4[self.kinematic_manager.ROBOT_IK],
+                self.kinematic_manager.wrapper.actual_angle_5[self.kinematic_manager.ROBOT_IK],
+            )
+            self.target_source = "theoretical"
         else:
-            target_pose = calculate_fk(*target_angles) if target_angles is not None else 6*[None]
-        for idx, (label_target, label_reached) in enumerate(
-            zip(self.target_value_labels, self.reached_value_labels)
-        ):
-            pose_target = target_pose[idx]
+            target_pose = [None] * 6
+            target_angles = [None] * 6
+            self.target_source = "unknown"
+
+        if target_angles is None or any(angle is None for angle in target_angles):
+            target_pose = [None] * 6
+        else:
+            target_pose = calculate_fk(*target_angles)
+
+        pose_target_header = f"Target ({self.target_source})"
+        angle_target_header = f"Target ({self.target_source})"
+        self.pose_table.setHorizontalHeaderLabels([
+            "Axis",
+            pose_target_header,
+            "Camera",
+            "Difference",
+        ])
+        self.angle_table.setHorizontalHeaderLabels([
+            "Axis",
+            angle_target_header,
+            "Camera tip",
+            "Camera direct",
+            "Diff tip",
+            "Diff direct",
+        ])
+
+        for idx in range(6):
             pose_reached = self.reached_value[idx]
-            if pose_target is None:
-                label_target.setText("-")
+            pose_target = target_pose[idx]
+
+            camera_text = "-" if pose_reached is None else f"{pose_reached:.3f}"
+            target_text = "-" if pose_target is None else f"{pose_target:.3f}"
+
+            if pose_reached is None or pose_target is None:
+                difference_text = "-"
             else:
-                label_target.setText(f"{pose_target:.3f}")
-            
-            if pose_reached is None:
-                label_reached.setText("-")
-            else:
-                label_reached.setText(f"{pose_reached:.3f}")
+                difference = pose_target - pose_reached
+                difference_text = f"{difference:+.3f}"
+
+            self.pose_table.item(idx, 1).setText(target_text)
+            self.pose_table.item(idx, 2).setText(camera_text)
+            self.pose_table.item(idx, 3).setText(difference_text)
+
+            angle_target = target_angles[idx]
+            tip_angle = self.camera_tip_angles[idx]
+            direct_angle = self.camera_direct_angles[idx]
+
+            target_text = "-" if angle_target is None else f"{angle_target:.3f}"
+            tip_text = "-" if tip_angle is None else f"{tip_angle:.3f}"
+            direct_text = "" if direct_angle is None else f"{direct_angle:.3f}"
+            tip_difference = "-" if angle_target is None or tip_angle is None else f"{angle_target - tip_angle:+.3f}"
+            direct_difference = "" if direct_angle is None else f"{angle_target - direct_angle:+.3f}"
+
+            self.angle_table.item(idx, 1).setText(target_text)
+            self.angle_table.item(idx, 2).setText(tip_text)
+            self.angle_table.item(idx, 3).setText(direct_text)
+            self.angle_table.item(idx, 4).setText(tip_difference)
+            self.angle_table.item(idx, 5).setText(direct_difference)
 
     def connect_to_camera(self):
 
@@ -217,6 +316,8 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.camera_window_names.clear()
 
         self.reached_value = 6*[None]
+        self.camera_tip_angles = [None] * 6
+        self.camera_direct_angles = [None] * 6
         self.update_axis_values()
         
         self.toggle_connect_button(False)
@@ -227,6 +328,20 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
     def update_reached_value(self, markers):
         if markers is None:
             return
+
+        if 54 in markers:
+            base_pose = markers[54]["qr_tvec"].reshape(3)
+            base_R = markers[54]["qr_R"]
+            base_pose -= 51/1000 * base_R[:, 2]
+            base_pose -= 25/1000 * base_R[:, 1]
+            base_pose -= 25/1000 * base_R[:, 0]
+
+            self.base_pose = base_pose
+            markers[54]["qr_tvec"] = base_pose
+
+        if 54 in markers and 61 in markers:
+            axis_1_2_mutual_pose = vision_helper.get_marker_mutal_pose_YZ(markers, pairs=[(54, 61)])
+            
 
         marker_pose = vision_helper.get_best_marker(markers, (59, 62, 60, 58, 63))
         if marker_pose is None or 54 not in markers:
@@ -276,7 +391,6 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         pich = self.reached_value[4]
         yaw  = self.reached_value[5]
 
-
         # tutaj trzeba sprawdzić który marker docelowy wybraliśmy a następnie przesunąć jego środek do końcówki robota
         # rotacja powinna zdostosowana w zależności od tego w którym miejscu marker został zamontowany na kostce robota
         # przypadek markerów 54, 62 jest najprostszy bo zakłada że magnes jest naklejony na czubku robota (zgodnie z osią obrotu osi 6)
@@ -288,10 +402,17 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
         self.reached_value[4] = roll
         self.reached_value[5] = pich
 
+        try:
+            degrees = calculate_ik(*self.reached_value)
+            self.camera_tip_angles = list(degrees)
+        except Exception:
+            degrees = None
+            self.camera_tip_angles = [None] * 6
+
         self.update_axis_values()
 
-        degrees = calculate_ik(*self.reached_value)
-        self.kinematic_manager.rotate_camera_robot(*degrees)
+        if degrees is not None:
+            self.kinematic_manager.rotate_camera_robot(*degrees)
 
     @QtCore.Slot(object)
     def update_frames(self, pose_and_frames):
@@ -316,6 +437,17 @@ class ROBOT_VISION_TAB(QtWidgets.QWidget):
                 self.tip_pose[0],
                 self.tip_pose[1],
                 self.tip_pose[2],
+                determine_pose_interface.camera.get_camera_matrix(),
+                determine_pose_interface.camera.get_dist_coeffs(),
+                determine_pose_interface.camera.get_scale_factor()
+            )
+
+        if (self.base_pose is not None):
+            frames[0] = self.draw_point(#rysowanie kropki ma sens tylko dla kamery pierwszej - bo ona nadaje układ współrzędnych
+                frames[0],
+                self.base_pose[0],
+                self.base_pose[1],
+                self.base_pose[2],
                 determine_pose_interface.camera.get_camera_matrix(),
                 determine_pose_interface.camera.get_dist_coeffs(),
                 determine_pose_interface.camera.get_scale_factor()
